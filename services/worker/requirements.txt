@@ -1,0 +1,6 @@
+redis==5.0.7
+rq==1.16.2
+requests==2.32.3
+python-dotenv==1.0.1
+
+boto3==1.28.29

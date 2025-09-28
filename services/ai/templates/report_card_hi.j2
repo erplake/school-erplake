@@ -1,0 +1,10 @@
+विद्यार्थी: {{student_name}}, कक्षा {{grade}}, सत्र {{term}}।
+
+सारांश:
+- उपस्थिति: {{attendance_pct}}%
+- विषय: {{ subjects|map(attribute='name')|list|join(', ') }}
+
+टिप्पणी (ड्राफ्ट):
+{{student_name}} ने इस सत्र में ठोस प्रगति दिखाई है। {% if strengths %}मजबूत पक्ष: {{ strengths|join(', ') }}।{% endif %}
+{% if improvements %}आगे ध्यान देने के क्षेत्र: {{ improvements|join(', ') }}।{% endif %}
+नियमित अभ्यास और साप्ताहिक पुनरावृत्ति से परिणाम और बेहतर होंगे।

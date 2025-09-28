@@ -1,0 +1,121 @@
+# ---- Root Ignore for ERPLake School Monorepo ----
+# OS / Editor / Misc
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+*.iml
+*.log
+logs/
+*.pid
+*.seed
+*.patch
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.python-version
+.env
+.venv/
+venv/
+.env.local
+.env.*.local
+Pipfile.lock
+.poetry-cache/
+.mypy_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+.eggs/
+*.egg-info/
+.site/
+
+# Node / Frontend
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+# Allow lock if you prefer reproducibility: remove above line if needed
+coverage/
+.vite/
+.eslintcache
+.cache/
+.next/
+out/
+
+# Build artifacts
+*.tar
+*.zip
+*.gz
+*.tgz
+
+# Local state & runtime
+.state/
+*.out.log
+*.err.log
+*.port
+*.pid
+/tmp/
+.temp/
+
+# Environment / secrets (add real names as needed)
+.envrc
+secrets/*.json
+secrets/*.yaml
+!secrets/README.md
+
+# Database / Data dumps
+*.sqlite3
+*.db
+*.sql.dump
+pgdata/
+
+# Postgres Windows bundle (binary kit) - prevent giant push
+postgresql-*-windows-*-binaries.zip
+# Ignore entire bundled Postgres directory
+pgsql/
+# If you actually need some tooling in repo, whitelist files explicitly (e.g. !pgsql/README.md)
+
+# Caches
+.cache/
+pytest_cache/
+**/.pytest_cache/
+.coverage.*
+
+# Images / media large originals (optional pattern)
+raw_media/
+
+# Compiled
+*.pyc
+*.pyo
+
+# TypeScript build outputs
+*.tsbuildinfo
+
+# Docker artifacts
+**/Dockerfile.*.tmp
+
+# VSCode test output
+.vscode-test/
+
+# Local backup files
+*.bak
+*.tmp
+~$*
+
+# PowerShell scripts (ignored for Ubuntu portability). If you later need one, negate with !scripts/name.ps1
+*.ps1
+**/*.ps1
+
+# Lockfiles you may decide to keep — currently ignoring only package-lock.json above
+
+# End of .gitignore

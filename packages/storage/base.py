@@ -1,0 +1,9 @@
+from abc import ABC, abstractmethod
+
+class Storage(ABC):
+    @abstractmethod
+    async def put(self, path: str, data: bytes, content_type: str) -> str: ...
+    @abstractmethod
+    async def get(self, path: str) -> bytes: ...
+    @abstractmethod
+    def signed_url(self, path: str, expires: int = 3600) -> str: ...

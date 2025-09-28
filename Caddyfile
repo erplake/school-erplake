@@ -1,0 +1,18 @@
+{
+  # For local dev only; replace with your domain on VPS.
+  auto_https off
+}
+
+:80 {
+  encode zstd gzip
+  handle_path /api* {
+      reverse_proxy api:8000
+  }
+  handle_path /ai* {
+      reverse_proxy ai:8001
+  }
+  respond /healthz "ok"
+  handle {
+      respond "School ERPLake demo reverse proxy"
+  }
+}

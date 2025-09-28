@@ -1,0 +1,10 @@
+Student: {{student_name}}, Grade {{grade}}, Term {{term}}.
+
+Summary:
+- Attendance: {{attendance_pct}}%
+- Subjects covered: {{ subjects|map(attribute='name')|list|join(', ') }}
+
+Comment (draft):
+{{student_name}} has shown steady progress this term. {% if strengths %}Strengths include {{ strengths|join(', ') }}.{% endif %}
+{% if improvements %}Focus areas next term: {{ improvements|join(', ') }}.{% endif %}
+Keep a consistent study routine and revise weekly to consolidate learning.

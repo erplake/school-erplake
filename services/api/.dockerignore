@@ -1,0 +1,15 @@
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+.env
+.env.*
+.git
+.gitignore
+.tests_cache
+.mypy_cache
+.pytest_cache
+build
+node_modules
+.cache

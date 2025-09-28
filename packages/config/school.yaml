@@ -1,0 +1,17 @@
+school:
+  name: "Demo Public School"
+  code: "DEMO"
+  locale: "en-IN"
+branding:
+  primary: "#0F766E"
+  accent: "#10B981"
+drivers:
+  storage: "s3"          # s3 | gdrive
+  whatsapp: "gupshup"    # gupshup | meta
+  payments: "razorpay"   # razorpay | stripe
+fees:
+  heads: ["Tuition","Transport","Lab","Exam"]
+attendance:
+  method: "manual"       # manual | qr | rfid
+notifications:
+  channels: ["whatsapp","email"]
