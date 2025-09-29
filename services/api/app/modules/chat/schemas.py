@@ -1,5 +1,5 @@
 from __future__ import annotations
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, List, Any
 from uuid import UUID
 from datetime import datetime
@@ -15,8 +15,7 @@ class ConversationParticipantOut(BaseModel):
     user_id: int
     role: ParticipantRole
 
-    class Config:
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)
 
 class ConversationOut(ConversationBase):
     id: UUID
@@ -25,9 +24,7 @@ class ConversationOut(ConversationBase):
     last_message_at: datetime
     participants: List[ConversationParticipantOut] = []
 
-    class Config:
-        orm_mode = True
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True, from_attributes=True)
 
 class MessageCreate(BaseModel):
     conversation_id: UUID
@@ -36,8 +33,7 @@ class MessageCreate(BaseModel):
     attachment_url: Optional[str] = None
     meta: Optional[Any] = None
 
-    class Config:
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)
 
 class MessageOut(BaseModel):
     id: UUID
@@ -51,9 +47,7 @@ class MessageOut(BaseModel):
     sequence: Optional[int]
     flagged: bool
 
-    class Config:
-        orm_mode = True
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True, from_attributes=True)
 
 class MessageFlagCreate(BaseModel):
     message_id: UUID
@@ -66,9 +60,7 @@ class MessageFlagOut(BaseModel):
     status: FlagStatus
     created_at: datetime
 
-    class Config:
-        orm_mode = True
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True, from_attributes=True)
 
 class MessageSearchResult(BaseModel):
     id: UUID
@@ -79,6 +71,5 @@ class MessageSearchResult(BaseModel):
     snippet: Optional[str]
     rank: float
 
-    class Config:
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)
 

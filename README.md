@@ -37,16 +37,133 @@ alembic revision -m "change"  # create new migration (edit, then upgrade)
 
 > NOTE: This is a scaffold. Implement real persistence, RBAC, and validations per your needs.
 
+## Functional Scope & Domain Specification
+
+An initial comprehensive functional specification covering Foundations (branding, auth, RBAC, audit, notifications), SIS, Academics (timetable, attendance, lesson plans, homework, labs, exams, gradebook/report cards), Communication & PTM, Fees & Accounts, Transport, Library, Inventory & Assets, Staff (HR lite), Events/Sports, Canteen/Uniform/Vendors, and Analytics dashboards is now maintained in:
+
+`docs/functional-spec.md`
+
+Use that document as the authoritative contract when introducing new models, migrations, API endpoints, or UI modules. Update it first (or in the same PR) when altering workflows (e.g., report card publication sequence, refund approval gate). A future `permissions-matrix.md` will enumerate granular action codes referenced by RBAC logic.
+\n+Product Backlog Epics A–P (Admissions through Analytics) have now been appended to that spec under the section "Product Backlog Epics (A–P)". Treat each Epic and its listed user stories as the source of truth for scoping new migrations, endpoints, background jobs, and UI slices. When you implement or materially change a story:
+1. Update `docs/functional-spec.md` (story status / notes) inline with the epic.
+2. Add or adjust corresponding permission codes in `docs/permissions-matrix.md` (the matrix now exists — no longer “future”).
+3. Create an Alembic migration to insert new permission rows (and default role mappings) before using them in routers.
+4. Reference the permission via `require('domain:ACTION')` decorators / dependency calls.
+5. If data shape changes, update Pydantic schemas & frontend API client types in the same PR.
+
+Tip: Preface new permission codes with the epic domain (e.g. `ADMISSIONS.SUBMISSION_APPROVE`, `FEES.INVOICE_CANCEL`, `EXAMS.SCHEDULE_LOCK`) to keep the matrix navigable.
+
+### Clean Multi‑Schema Adoption (Planned Refactor)
+
+An initial multi‑schema baseline (core, academics, comms, fees, transport, library, inventory, events, health, audit) has been introduced via Alembic migration `20250929_1018_multi_schema_baseline`. It currently creates only foundational tables (school, user_account, user_role, academic_year, class_section) alongside existing legacy public tables.
+
+If you want a clean rebuild using the richer domain design (recommended early before significant data accrues):
+1. Stop running services (`stop-all` script or docker compose down).
+2. Drop the dev database (ensure you are OK losing test data). For example (PowerShell):
+	- `psql $env:DATABASE_URL -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid();"`
+	- `dropdb your_db && createdb your_db` (or equivalent UI).
+3. Run Alembic upgrade from a fresh clone: `alembic upgrade head` (scripts/start-all will also apply migrations by default).
+4. Refactor ORM models to use schema‑qualified tables (e.g. `__table_args__ = {"schema": "core"}`) and gradually deprecate legacy tables (`students`, `attendance_student`, etc.).
+5. Introduce new domain tables (exams, fees, transport, library, etc.) in incremental follow-up migrations mirroring `docs/functional-spec.md`.
+
+During transition you can optionally create compatibility database views that match old table shapes while the API layer is refactored. Once all endpoints read from the new schemas, drop the views and remove denormalized columns.
+
+Tracking next steps:
+* Implement permission catalog & RBAC persistence (roles ↔ permissions ↔ users).
+* Add guardians + enrollment tables mapping to legacy student responses.
+* Replace denormalized attendance/fee aggregates with derived queries.
+* Add audit log middleware writing to `audit.log`.
+
+This section will evolve as refactors land; keep commit messages referencing spec section numbers.
+
+### RBAC Permission Catalog
+
+Dynamic permission enforcement now loads from database tables (`core.permission`, `core.role_permission`, `core.user_permission_override`). The initial seed is created in migration `20250929_1025_rbac_permissions`.
+
+Reference matrix: `docs/permissions-matrix.md`.
+
+Testing Strategy (RBAC):
+The test suite operates against a transient schema created via `Base.metadata.create_all` (not full Alembic migrations) for speed. Permission success-path tests that require seeded `core.permission` + `core.role_permission` rows are deferred; instead we validate:
+1. Enforcement path: endpoints guarded by `require('code')` return 403 for roles lacking the code when `RBAC_ENFORCE=1`.
+2. Bypass path: with `RBAC_ENFORCE=0` the same endpoints return 200/empty payload even without DB permission rows (graceful development mode).
+
+If you need full permission matrix tests, run migrations inside tests (slower) or add a helper fixture that inserts the minimal permission rows your tests rely on.
+
+To add a new permission:
+1. Create an Alembic migration inserting into `core.permission` and mapping defaults in `core.role_permission`.
+2. Update `docs/permissions-matrix.md`.
+3. Use `require('domain:action')` in routers.
+4. (Optional) Grant/revoke for a specific user via `core.user_permission_override` rows.
+
+### New Domain Slices: Files, Comms, Payments (2025-09-29)
+
+These modules were introduced as part of Epics C/D foundational scaffolding. Each exposes a minimal CRUD surface and matching permission codes (seeded by migration `20250929_1205_extend_permissions_files_comms_payments`).
+
+Files API (schema: `files` placeholder ORM models — full multi-schema refactor pending):
+```
+POST /files/blobs              (perm: files:blob_register)
+GET  /files/blobs/{id}         (perm: files:blob_read)
+POST /files/attachments        (perm: files:attachment_create)
+GET  /files/attachments/{id}   (perm: files:attachment_read)
+```
+Blob registration stores metadata only (no binary). `storage_backend` + `storage_key` integrate with future drivers (local, S3, GDrive). A presign endpoint stub exists (`/files/presign`) returning 501 for now.
+
+Comms API (template catalog + outbox enqueue):
+```
+POST /comms/templates          (perm: comms:template_create)
+GET  /comms/templates          (perm: comms:template_list)
+POST /comms/outbox             (perm: comms:outbox_enqueue)
+GET  /comms/outbox/{id}        (perm: comms:outbox_read)
+```
+Outbox rows start at status=PENDING. Delivery to real providers (Email/SMS/WhatsApp) will be implemented by channel-specific adapters. A lightweight polling worker sets PENDING → SENT (simulation) as a placeholder.
+
+Payments API (gateway transaction registry + reconciliation ledger):
+```
+POST /payments/pg              (perm: payments:tx_create)
+GET  /payments/pg/{id}         (perm: payments:tx_read)
+POST /payments/recon           (perm: payments:recon_create)
+GET  /payments/recon/{id}      (perm: payments:recon_read)
+```
+`pg_transaction` records store gateway references (order/payment/refund ids) and opaque JSON payloads. `recon_ledger` captures financial lifecycle steps (AUTH, CAPTURED, REFUND, ADJUST). Future work: tie to `fees.invoice` and derive settlement status metrics.
+
+Outbox Worker (development/local):
+```
+python -m app.workers.outbox_worker
+```
+Configuration: Poll interval 2s, batch size 20. Logs processed counts. Replace the simulation block with channel dispatch + retry/backoff (exponential) in future iterations. Consider converting to a dedicated service or integrating with existing `worker` process.
+
+Permissions Reference (added by migration):
+```
+files:blob_register, files:blob_read, files:attachment_create, files:attachment_read,
+comms:template_create, comms:template_list, comms:outbox_enqueue, comms:outbox_read,
+payments:tx_create, payments:tx_read, payments:recon_create, payments:recon_read
+```
+Accountant role receives payment permissions; Admin receives all. Adjust via `core.role_permission` mutations / overrides.
+
 
 ## Frontend (Vite + React Router)
 
 Location: `apps/web`.
 
 Features:
-- React 18 + React Router layout (`layout.jsx`) with pages: Dashboard, Students (fetch example), Fees, Attendance, Invoices, Settings
+- React 18 + React Router layout (`layout.jsx`) with pages: Dashboard, Students (enriched data grid), Fees, Attendance, Invoices, Settings
 - Central API helper (`src/api.js`) reading `VITE_API_BASE` and optional `VITE_DEV_ACCESS_TOKEN` for quick authenticated dev calls
 - Basic styling in `src/styles.css`
-- Students page demonstrates calling the protected `/students` endpoint (token required)
+- Students page now uses enriched backend fields and slide-over profile sheet.
+
+Student API prototype fields returned:
+```
+id, admission_no, first_name, last_name, klass, section, guardian_phone,
+attendance_pct, fee_due_amount, transport (JSON), tags (comma-separated),
+absent_today, updated_at
+```
+
+Additional placeholder endpoints (will later integrate real services):
+```
+POST /students/{id}/message { message }
+GET  /students/{id}/bonafide
+```
+Frontend sheet exposes guardian messaging (queued stub) & bonafide certificate preview.
 
 Environment file example: copy `apps/web/.env.example` to `apps/web/.env.local` (or `.env`) and set:
 ```
@@ -69,6 +186,47 @@ Production build (placeholder):
 npm run build
 ```
 Outputs will land in `dist/` (hook into Caddy / CDN later).
+
+### New: Transport Management UI (Demo Data)
+
+A richer fleet operations page has been added at route:
+
+`/transport/management`
+
+Features included (client‑side demo only – no API calls yet):
+- Fleet table with filtering (search, route, status, alerts‑only)
+- KPI cards (fleet size, on trip, maintenance, service due, expiring documents)
+- Service interval tracking with next service calculation and status badges
+- Document expiry highlighting (insurance, permit, fitness, PUC) with color codes
+- Driver license expiry badges
+- GPS freshness badge (live / minutes ago / offline)
+- Bulk selection (assign route, mark maintenance)
+- Per‑bus actions (assign driver, log service, log incident, edit bus)
+- Modal forms for driver assignment, service logging, incidents, and bus create/edit
+- CSV export (filtered subset) + print friendly layout
+- Alerts panel aggregating upcoming service/doc/license expirations
+
+Data is seeded in‑memory in `TransportManagement.jsx`. To integrate with real APIs later:
+1. Replace the seeded `useState([...])` arrays (`drivers`, `routes`, `buses`) with `useEffect` fetch calls.
+2. Centralize date helpers & badge logic in a shared `transport/utils.js` module when backend endpoints are ready.
+3. Introduce suspense/loading + mutation hooks (e.g. React Query) and optimistic updates replacing the current direct state maps.
+
+Navigation: A new sidebar link "Transport Mgmt" appears under Finance & HR. The original `/transport` placeholder remains (can be converted to a high‑level routes view or redirect later).
+
+CSV Export: Generates `transport-fleet-YYYY-MM-DD.csv` with quoted/escaped values (Excel compatible).
+
+Print: Uses browser print; future enhancement could render a condensed printable manifest.
+
+Planned follow‑ups (not yet implemented):
+- Persist incidents & service history via API
+- Driver availability & shift planning
+- Route optimization integration
+- Geo fencing & live map embed
+- Permission‑gated maintenance actions
+
+File location: `apps/web/src/pages/transport/TransportManagement.jsx`.
+
+If you prefer the advanced page to be the default `/transport`, swap the route components or add a redirect in `main.jsx`.
 
 ## Unified Dev Scripts (Background Managed)
 

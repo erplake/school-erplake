@@ -20,8 +20,12 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
+host = os.getenv('POSTGRES_HOST', 'db')
+# Allow easy local override if docker network not up
+if host == 'db' and os.getenv('LOCAL_DEV', '0') in ('1','true','True'):
+    host = '127.0.0.1'
 db_url = os.getenv('DATABASE_URL') or (
-    f"postgresql://{os.getenv('POSTGRES_USER','school')}:{os.getenv('POSTGRES_PASSWORD','schoolpass')}@{os.getenv('POSTGRES_HOST','db')}:{os.getenv('POSTGRES_PORT','5432')}/{os.getenv('POSTGRES_DB','schooldb')}"
+    f"postgresql://{os.getenv('POSTGRES_USER','school')}:{os.getenv('POSTGRES_PASSWORD','schoolpass')}@{host}:{os.getenv('POSTGRES_PORT','5432')}/{os.getenv('POSTGRES_DB','schooldb')}"
 )
 
 def run_migrations_offline():
@@ -32,6 +36,21 @@ def run_migrations_offline():
 def run_migrations_online():
     connectable: Engine = create_engine(db_url, poolclass=pool.NullPool)
     with connectable.connect() as connection:
+        # Run preamble SQL in autonomous short transactions so a privilege error does not poison the main migration tx.
+        for stmt, label in [
+            ("CREATE SCHEMA IF NOT EXISTS public", "public schema create"),
+            ("SET search_path TO public, core, academics, fees", "search_path set")
+        ]:
+            try:
+                # Each exec is autocommit in SQLAlchemy 2 style if outside explicit transaction block
+                connection.exec_driver_sql(stmt)
+            except Exception as e:
+                print(f"[alembic env] Note: {label} skipped ({e})")
+                # rollback just in case driver opened a transaction implicitly
+                try:
+                    connection.rollback()
+                except Exception:
+                    pass
         context.configure(connection=connection, compare_type=True)
         with context.begin_transaction():
             context.run_migrations()

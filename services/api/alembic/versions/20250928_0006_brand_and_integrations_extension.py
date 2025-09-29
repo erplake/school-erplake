@@ -46,4 +46,4 @@ def downgrade():
         b.drop_column('city')
         b.drop_column('address_line2')
         b.drop_column('address_line1')
-*** End Patch
+    # end downgrade

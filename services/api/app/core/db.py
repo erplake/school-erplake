@@ -10,8 +10,11 @@ def _to_async_dsn(dsn: str) -> str:
         return dsn.replace("postgresql://", "postgresql+asyncpg://", 1)
     return "postgresql+asyncpg://" + dsn
 
-ASYNC_DSN = _to_async_dsn(settings.postgres_dsn)
-engine = create_async_engine(ASYNC_DSN, echo=False, pool_pre_ping=True)
+def _current_async_dsn() -> str:
+    return _to_async_dsn(settings.postgres_dsn)
+
+# Engine created once; for test reconfiguration, user must ensure env vars set before first import
+engine = create_async_engine(_current_async_dsn(), echo=False, pool_pre_ping=True)
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 async_session = SessionLocal  # backward compatible alias
 

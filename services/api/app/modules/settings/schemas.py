@@ -1,5 +1,5 @@
 from __future__ import annotations
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from uuid import UUID
 from datetime import datetime
@@ -25,8 +25,7 @@ class IntegrationSettingsOut(BaseModel):
     updated_by: Optional[str]
     updated_at: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 class BrandSettingsUpdate(BaseModel):
     school_name: Optional[str]
@@ -67,5 +66,32 @@ class BrandSettingsOut(BaseModel):
     updated_by: Optional[str]
     updated_at: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
+
+class ConfigEntryUpsert(BaseModel):
+    key: str
+    value_json: dict
+    is_secret: Optional[bool] = False
+
+class ConfigEntryOut(BaseModel):
+    id: int
+    key: str
+    value_json: dict
+    is_secret: bool
+    updated_by: Optional[int] = None
+    updated_at: Optional[datetime] = None
+    model_config = ConfigDict(from_attributes=True)
+
+class IntegrationCredentialCreate(BaseModel):
+    provider: str
+    label: Optional[str] = None
+    credentials: dict
+
+class IntegrationCredentialOut(BaseModel):
+    id: int
+    provider: str
+    label: Optional[str]
+    credentials: dict
+    rotated_at: Optional[datetime]
+    created_at: Optional[datetime]
+    model_config = ConfigDict(from_attributes=True)

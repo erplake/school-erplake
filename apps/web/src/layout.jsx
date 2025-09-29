@@ -15,6 +15,11 @@ const navSections = [
     items: [
   { to: '/', label: 'Dashboard', end: true, icon: HomeIcon },
   { to: '/students', label: 'Students', icon: UserGroupIcon },
+  { to: '/core/classroom', label: 'Classroom', icon: AcademicCapIcon },
+  { to: '/core/staff', label: 'Staff Mgmt', icon: UsersIcon },
+  { to: '/core/staff/directory', label: 'Staff Directory', icon: UsersIcon },
+  { to: '/core/transport', label: 'Transport', icon: TruckIcon },
+  { to: '/core/transport/management', label: 'Transport Mgmt', icon: TruckIcon },
   { to: '/attendance', label: 'Attendance', icon: ClipboardDocumentCheckIcon },
   { to: '/timetable', label: 'Timetable', icon: ClockIcon },
   { to: '/library', label: 'Library', icon: BookOpenIcon },
@@ -55,7 +60,6 @@ const navSections = [
   { to: '/fees', label: 'Fees', icon: CurrencyRupeeIcon },
   { to: '/invoices', label: 'Invoices', icon: DocumentTextIcon },
   { to: '/payroll/components', label: 'Payroll', icon: BanknotesIcon },
-  { to: '/transport', label: 'Transport', icon: TruckIcon },
     ],
   },
   {

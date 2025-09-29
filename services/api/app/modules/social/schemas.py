@@ -1,5 +1,5 @@
 from __future__ import annotations
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import Optional
 from uuid import UUID
 from datetime import datetime
@@ -12,8 +12,7 @@ class SocialPostCreate(BaseModel):
     media_url: Optional[str]
     scheduled_for: Optional[datetime]
 
-    class Config:
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)
 
 class SocialPostUpdate(BaseModel):
     title: Optional[str]
@@ -22,8 +21,7 @@ class SocialPostUpdate(BaseModel):
     scheduled_for: Optional[datetime]
     status: Optional[SocialPostStatus]
 
-    class Config:
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)
 
 class SocialPostOut(BaseModel):
     id: UUID
@@ -37,9 +35,7 @@ class SocialPostOut(BaseModel):
     failure_reason: Optional[str]
     channel_ref: Optional[str]
 
-    class Config:
-        orm_mode = True
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True, from_attributes=True)
 
 class SocialPostSearchResult(BaseModel):
     id: UUID
@@ -49,5 +45,4 @@ class SocialPostSearchResult(BaseModel):
     rank: float
     created_at: datetime
 
-    class Config:
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)

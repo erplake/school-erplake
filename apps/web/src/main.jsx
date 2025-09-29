@@ -20,8 +20,8 @@ import Timetable from './pages/timetable/Timetable';
 import Library from './pages/library/Library';
 // Transport
 import Transport from './pages/transport/Transport';
-// Staff
-import StaffDirectory from './pages/staff/StaffDirectory';
+import TransportManagement from './pages/transport/TransportManagement';
+// Staff (directory import removed here; single consolidated import appears later)
 // Notifications
 import NotificationsCenter from './pages/notifications/NotificationsCenter';
 // Auth
@@ -76,10 +76,12 @@ import Workshops from './pages/workshops/Workshops';
 import CoScholastic from './pages/coscholastic/CoScholastic';
 import SchoolLabs from './pages/labs/SchoolLabs';
 import StaffManagement from './pages/staff/StaffManagement';
+import StaffDirectory from './pages/staff/StaffDirectory';
 import LessonPlans from './pages/academics/LessonPlans';
-import Engagement from './pages/engagement/Engagement';
+import ClassroomManagement from './pages/core/Classroom';
 import EventsEngagement from './pages/events/EventsEngagement';
 import ExternalEvents from './pages/events/ExternalEvents';
+import Engagement from './pages/engagement/Engagement';
 
 import './styles.css';
 import { GlobalSettingsProvider } from './context/GlobalSettingsContext';
@@ -115,8 +117,15 @@ root.render(
                 </Route>
                 <Route path="timetable" element={<Timetable />} />
                 <Route path="library" element={<Library />} />
-                <Route path="transport" element={<Transport />} />
-                <Route path="staff" element={<StaffDirectory />} />
+                <Route path="transport">
+                    <Route index element={<Transport />} />
+                    <Route path="management" element={<TransportManagement />} />
+                </Route>
+                {/* Core aliases for transport */}
+                <Route path="core/transport" element={<Transport />} />
+                <Route path="core/transport/management" element={<TransportManagement />} />
+                {/* Staff main path now shows Management dashboard */}
+                <Route path="staff" element={<StaffManagement />} />
                 <Route path="notifications" element={<NotificationsCenter />} />
                 <Route path="profile" element={<Profile />} />
 
@@ -168,8 +177,15 @@ root.render(
                 <Route path="workshops" element={<Workshops />} />
                 <Route path="activities" element={<CoScholastic />} />
                 <Route path="labs" element={<SchoolLabs />} />
+                {/* Explicit alias to management plus directory sub-route */}
                 <Route path="staff/management" element={<StaffManagement />} />
+                <Route path="staff/directory" element={<StaffDirectory />} />
+                {/* Core aliases for staff */}
+                <Route path="core/staff" element={<StaffManagement />} />
+                <Route path="core/staff/directory" element={<StaffDirectory />} />
                 <Route path="academics/lesson-plans" element={<LessonPlans />} />
+                {/* Classroom (core) */}
+                <Route path="core/classroom" element={<ClassroomManagement />} />
                 <Route path="engagement" element={<Engagement />} />
                 <Route path="events/engagement" element={<EventsEngagement />} />
                 <Route path="events/external" element={<ExternalEvents />} />

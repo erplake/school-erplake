@@ -1,3 +1,11 @@
+-- DEPRECATION NOTICE ---------------------------------------------------------
+-- This file was used for initial bootstrap via docker ENTRYPOINT. Alembic
+-- migrations are now the authoritative schema source. Do NOT add new DDL here.
+-- Future changes: create an Alembic revision instead. This file is retained
+-- only so first-time container startup on a blank volume does not fail when
+-- Alembic isn't invoked yet. Consider removing the mount once environments
+-- consistently run `alembic upgrade head` during startup.
+------------------------------------------------------------------------------
 -- Minimal MVP tables (extend with constraints/indices as needed)
 create table if not exists students (
   id serial primary key,
@@ -99,3 +107,70 @@ create table if not exists refresh_tokens (
   created_at timestamptz default now(),
   unique(user_id, token_hash)
 );
+
+-- === Added for Classroom / Classes feature ===
+create table if not exists class_status (
+  id serial primary key,
+  grade int not null,
+  section text not null,
+  result_status text not null default 'Pending',
+  updated_at timestamptz default now(),
+  unique(grade, section)
+);
+
+create table if not exists student_tags (
+  id serial primary key,
+  student_id int references students(id) on delete cascade,
+  tag text not null,
+  created_at timestamptz default now()
+);
+create index if not exists idx_student_tags_student_id on student_tags(student_id);
+create index if not exists idx_student_tags_tag on student_tags(tag);
+
+create table if not exists attendance_events (
+  id serial primary key,
+  student_id int references students(id) on delete cascade,
+  date date not null,
+  present int not null check (present in (0,1)),
+  created_at timestamptz default now(),
+  unique(student_id, date)
+);
+create index if not exists idx_attendance_events_student_date on attendance_events(student_id, date);
+
+create table if not exists fee_invoices (
+  id serial primary key,
+  student_id int references students(id) on delete cascade,
+  amount int not null,
+  paid_amount int not null default 0,
+  due_date date,
+  created_at timestamptz default now(),
+  settled_at timestamptz
+);
+create index if not exists idx_fee_invoices_student_id on fee_invoices(student_id);
+
+create table if not exists student_transport (
+  id serial primary key,
+  student_id int references students(id) on delete cascade,
+  route text,
+  stop text,
+  active int default 1,
+  updated_at timestamptz default now()
+);
+create index if not exists idx_student_transport_student_id on student_transport(student_id);
+
+-- Class teacher assignments
+create table if not exists class_teachers (
+  id serial primary key,
+  grade int not null,
+  section text not null,
+  teacher_name text not null,
+  updated_at timestamptz default now(),
+  unique(grade, section)
+);
+
+-- Additional performance indexes
+create index if not exists idx_students_class_section on students(class, section);
+create index if not exists idx_fee_invoices_student_settled on fee_invoices(student_id, settled_at);
+-- attendance_events already has composite index; ensure one exists
+create index if not exists idx_attendance_events_student_date2 on attendance_events(student_id, date);
+

@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  api:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: erplake
+          POSTGRES_PASSWORD: erplake
+          POSTGRES_DB: schooldb_test
+        ports: [ '5544:5432' ]
+        options: >-
+          --health-cmd "pg_isready -U erplake -d schooldb_test" \
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+            python-version: '3.11'
+      - name: Install system deps
+        run: sudo apt-get update && sudo apt-get install -y build-essential
+      - name: Install dependencies
+        working-directory: services/api
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run migrations
+        working-directory: services/api
+        env:
+          TEST_DATABASE_URL: postgresql+asyncpg://erplake:erplake@localhost:5544/schooldb_test
+          DATABASE_URL: postgresql://erplake:erplake@localhost:5544/schooldb_test
+          LOCAL_DEV: '1'
+        run: |
+          . .venv/bin/activate
+          python -m alembic upgrade head
+      - name: Run tests
+        working-directory: services/api
+        env:
+          TEST_DATABASE_URL: postgresql+asyncpg://erplake:erplake@localhost:5544/schooldb_test
+          DATABASE_URL: postgresql://erplake:erplake@localhost:5544/schooldb_test
+          LOCAL_DEV: '1'
+        run: |
+          . .venv/bin/activate
+          pip install pytest-cov
+          python -m pytest --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml -q
+          python -m scripts.permission_audit --no-fail || true
+      - name: Lint (ruff)
+        working-directory: services/api
+        run: |
+          . .venv/bin/activate
+          pip install ruff
+          ruff check app
+      - name: Enforce coverage threshold
+        working-directory: services/api
+        run: |
+          . .venv/bin/activate
+          python - <<'PY'
+import sys, xml.etree.ElementTree as ET
+tree = ET.parse('coverage.xml')
+root = tree.getroot()
+totals = root.find('coverage').attrib if root.find('coverage') is not None else root.attrib
+# Fallback: parse line-rate attribute
+line_rate = float(root.get('line-rate', totals.get('line-rate', 0)))
+threshold = 0.55
+print(f"Line coverage: {line_rate*100:.2f}% (threshold {threshold*100:.0f}%)")
+if line_rate < threshold:
+    print('Coverage below threshold', file=sys.stderr)
+    sys.exit(1)
+PY
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: services/api/coverage.xml
