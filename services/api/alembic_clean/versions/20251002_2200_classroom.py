@@ -1,13 +1,11 @@
 """Create classroom management tables (wings, school_classes, class_students)
 
-Idempotent style: uses IF NOT EXISTS to allow re-run safety after baseline reset.
-Also ensures attendance_events and fee_invoices exist (referenced by analytics endpoint).
-Revision timestamp 20251002_2200.
+Short revision id (<=32) to satisfy alembic_version column length.
 """
 from alembic import op  # type: ignore
 import sqlalchemy as sa  # type: ignore
 
-revision = "20251002_2200_create_classroom_tables"
+revision = "20251002_2200_classroom"
 down_revision = "20251002_2100_baseline"
 branch_labels = None
 depends_on = None
@@ -15,7 +13,6 @@ depends_on = None
 
 def upgrade():
     conn = op.get_bind()
-    # wings
     conn.execute(sa.text(
         """
         CREATE TABLE IF NOT EXISTS wings (
@@ -33,7 +30,6 @@ def upgrade():
         CREATE INDEX IF NOT EXISTS ix_wings_academic_year ON wings(academic_year);
         """
     ))
-    # school_classes
     conn.execute(sa.text(
         """
         CREATE TABLE IF NOT EXISTS school_classes (
@@ -52,7 +48,6 @@ def upgrade():
         CREATE INDEX IF NOT EXISTS ix_school_classes_year_grade ON school_classes(academic_year, grade);
         """
     ))
-    # class_students
     conn.execute(sa.text(
         """
         CREATE TABLE IF NOT EXISTS class_students (
@@ -65,7 +60,6 @@ def upgrade():
         CREATE INDEX IF NOT EXISTS ix_class_students_student_id ON class_students(student_id);
         """
     ))
-    # attendance_events (if not already created elsewhere)
     conn.execute(sa.text(
         """
         CREATE TABLE IF NOT EXISTS attendance_events (
@@ -81,18 +75,17 @@ def upgrade():
         CREATE INDEX IF NOT EXISTS ix_attendance_events_date ON attendance_events(date);
         """
     ))
-    # fee_invoices (if not already present)
     conn.execute(sa.text(
         """
         CREATE TABLE IF NOT EXISTS fee_invoices (
           id SERIAL PRIMARY KEY,
-            student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
-            amount INT NOT NULL,
-            paid_amount INT DEFAULT 0 NOT NULL,
-            due_date DATE,
-            created_at timestamptz DEFAULT now() NOT NULL,
-            updated_at timestamptz DEFAULT now() NOT NULL,
-            settled_at timestamptz
+          student_id INT NOT NULL REFERENCES students(id) ON DELETE CASCADE,
+          amount INT NOT NULL,
+          paid_amount INT DEFAULT 0 NOT NULL,
+          due_date DATE,
+          created_at timestamptz DEFAULT now() NOT NULL,
+          updated_at timestamptz DEFAULT now() NOT NULL,
+          settled_at timestamptz
         );
         CREATE INDEX IF NOT EXISTS ix_fee_invoices_student_id ON fee_invoices(student_id);
         """

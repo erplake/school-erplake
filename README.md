@@ -33,7 +33,7 @@ alembic upgrade head          # apply latest migrations
 alembic revision -m "change"  # create new migration (edit, then upgrade)
 ```
 
-`alembic.ini` + `alembic/` contain the migration environment. Ensure `DATABASE_URL` is set or Postgres env vars are present.
+`alembic.ini` now points to the cleaned migration lineage in `alembic_clean/` (the legacy `alembic_legacy_20251003/` directory was archived on 2025-10-03). Ensure `DATABASE_URL` is set or Postgres env vars are present. See `services/api/MIGRATION_RESET.md` for details.
 
 > NOTE: This is a scaffold. Implement real persistence, RBAC, and validations per your needs.
 
@@ -150,6 +150,11 @@ Features:
 - Central API helper (`src/api.js`) reading `VITE_API_BASE` and optional `VITE_DEV_ACCESS_TOKEN` for quick authenticated dev calls
 - Basic styling in `src/styles.css`
 - Students page now uses enriched backend fields and slide-over profile sheet.
+ - RBAC (client demo) provider + management UI with capability taxonomy (localStorage persisted)
+ - Template Manager (system templates) powering announcement composition (client demo)
+ - Import Center (simulated multi-step CSV ingest + job log, client demo)
+ - Discipline Center (incident logging, status transitions, KPIs, RBAC-gated actions – client-side prototype)
+ - Admissions Management now guarded by new capabilities: `admissions.view` (read) and `admissions.manage` (create / advance / settings)
 
 Student API prototype fields returned:
 ```
@@ -380,6 +385,123 @@ psql $env:DATABASE_URL -c "\dt"  # list tables
 psql $env:DATABASE_URL -c "select * from students;"
 ```
 
+### New: Classroom / Classes Analytics Seeding
+
+An extended seed for the classroom domain (wings, school classes, student ↔ class mapping, attendance window history, fees, exam scores) now lives at:
+
+`python -m app.modules.classes.seed_classes`
+
+It is idempotent and will:
+* Insert synthetic students across grades 5–10 (sections A/B) if missing
+* Generate 5 days of historical attendance (random presence)
+* Create fee invoices (open, partial, settled) per student
+* Assign random tags & teacher names
+* Create a wing + `school_classes` rows for a derived academic year (e.g. 2025-26)
+* Map students into `class_students`
+* Insert two exam scores per student (older lower score, newer higher score) for results averaging
+
+Run (from `services/api` or repo root):
+```
+python -m app.modules.classes.seed_classes
+```
+
+## Classroom Management / Classes Admin API
+
+Endpoint: `GET /classes-admin`
+
+Returns enriched per‑class aggregates consumed by the advanced classroom dashboard.
+
+Response fields (per class):
+```
+id, academic_year, wing_id, grade, section, teacher_name, target_ratio,
+total_students, male, female,
+attendance_pct,          # 0-100 rolling window attendance %
+fee_due_pct,             # % of students with at least one outstanding (unsettled) fee invoice
+results_avg              # Average of each student's latest exam percentage within window
+```
+
+### Query Parameters
+* `academic_year` (optional): filter classes by academic year. If omitted returns all.
+* `attendance_days` (default 1): Rolling day window for attendance percentage. Capped 1–120.
+	* Attendance % = (Sum of present events in window) / (attendance_days * total_students) * 100.
+* `exam_window_days` (default 90): Look‑back window for selecting each student's latest exam score. Capped 1–365.
+
+### Exam Scores Source
+Schema created via native SQL: `infra/sql/exam_scores.sql`
+```
+exam_scores(id, student_id, exam_date, exam_type, total_marks, obtained_marks, created_at)
+```
+Latest exam per student within the `exam_window_days` window is used; class `results_avg` is the mean of (obtained/total * 100) across those students that have an exam.
+
+### Attendance Calculation Details
+Multiple events for a student per day are summed; typical usage is one row per day per student (present=1 / absent=0). If you later store multiple session records, consider replacing the raw sum with a DISTINCT ON (student_id, date) subquery.
+
+### Fee Due Percentage
+Counts students with any invoice where `settled_at IS NULL` and `amount - paid_amount > 0`.
+
+### Caching
+In‑process TTL cache (30s) keyed by `(academic_year, attendance_days, exam_window_days)`.
+Response includes header:
+```
+X-Cache: HIT | MISS
+```
+Invalidated on:
+* Class create / update
+* Student assignment to class
+* CSV import of classes
+
+Planned optional enhancement: Redis‑backed cache implementing same key semantics for multi‑process deployments.
+
+### CSV Import / Export
+Import endpoint: `POST /classes-admin/import` with file field `file`.
+Expected header:
+```
+academic_year,wing,grade,section,teacher_name,target_ratio
+```
+Export endpoint: `GET /classes-admin/export?academic_year=YYYY-YY` returns `{ csv: "..." }`.
+
+### Example Fetch
+```
+GET /classes-admin?academic_year=2025-26&attendance_days=7&exam_window_days=60
+```
+Sample (trimmed) JSON:
+```json
+[
+	{
+		"id": 12,
+		"academic_year": "2025-26",
+		"grade": 5,
+		"section": "A",
+		"total_students": 12,
+		"male": 6,
+		"female": 6,
+		"attendance_pct": 82,
+		"fee_due_pct": 58,
+		"results_avg": 67
+	}
+]
+```
+
+### Testing Coverage
+Added tests:
+* Attendance window variation (`attendance_days=1` vs `7`)
+* Exam results averaging (latest exam selection)
+* Cache HIT/MISS header behavior & invalidation
+* Full seed integration producing valid aggregate ranges
+
+Run the suite:
+```
+pytest -q -k classes_admin
+```
+
+### Extending
+Potential next steps:
+* Subject-level exam score breakdown (introduce `exam_subject_scores`)
+* Redis cache backend (feature flag `CLASSES_CACHE_BACKEND=redis`)
+* Materialized view or periodic job for heavy aggregates if usage grows
+* Attendance normalization to one record per day per student (session collapse)
+
+
 
 ## Roadmap (next)
 
@@ -398,6 +520,74 @@ If you don't see tables in your database:
 	cd services/api
 	python -m alembic upgrade head
 	```
+
+## Frontend Platform Foundations (Added)
+
+The React UI now includes three client-side foundational modules pending backend integration:
+
+### RBAC Management (`/system/rbac`)
+Source: `apps/web/src/context/RBACContext.jsx` & page `pages/system/RBACManagement.jsx`.
+Features:
+- Local capability taxonomy (domain.action) with role → capability assignments.
+- Impersonation selector for quick permission testing.
+- `<RequireCapability capability="x">` component for conditional rendering.
+- Persistence: localStorage (future: sync with API roles & permissions tables).
+
+### Template Manager (`/system/templates`)
+Source: `context/TemplateContext.jsx` & page `pages/system/TemplateManager.jsx`.
+Features:
+- Types: announcement, email, sms, certificate.
+- CRUD (create / edit / clone / delete) with simple placeholder highlighting (`{{variable.name}}`).
+- Local persistence (future: map to comms/templates API + versioning + approval workflow).
+
+### Import Center (`/system/import-center`)
+Source: `pages/system/ImportCenter.jsx`.
+Features:
+- Multi-step (Upload → Map Columns → Review → Commit) simulation.
+- Domain selector (students, staff, inventory) with required column schema hints.
+- Job history persisted locally with simulated row counts and warnings.
+- Backup / Export panel gated by `backup.export` capability.
+
+Planned backend alignment:
+1. Replace localStorage with REST endpoints (jobs, templates, roles).
+2. Introduce background job status polling via React Query.
+3. Add audit log entries for role/permission changes & template edits.
+
+These modules serve as scaffolding to unblock higher-level features (Discipline, Procurement, Scholarship workflows) that will depend on permissions, templated notifications, and bulk data onboarding.
+### Capability Catalog Export (Frontend → Docs Sync)
+
+The frontend RBAC prototype defines a capability taxonomy in `apps/web/src/context/RBACContext.jsx` (array `CAPABILITIES`). A helper at `apps/web/src/context/capabilitiesExport.js` can produce portable snapshots:
+
+Runtime (in browser dev console):
+```
+copy(window.__CAPS_JSON__())   // JSON snapshot (generatedAt, count, capabilities[])
+copy(window.__CAPS_MD__())     // Markdown table
+```
+
+Programmatic (Node / build tooling):
+```
+import { getCapabilitiesList, toJSON, toMarkdown } from './src/context/capabilitiesExport';
+console.log(toJSON());
+```
+
+Intended workflow (until backend permission matrix is authoritative):
+1. Add / adjust capabilities in `RBACContext.jsx`.
+2. Generate Markdown via helper and paste into `docs/permissions-matrix.md` under a section "Frontend Prototype Capabilities".
+3. When backend migration adds formal permissions, reconcile names (prefer kebab or dot consistently — current prototype uses dot form).
+4. Remove capabilities here once fully driven by API-provided matrix (future: fetch & hydrate roles dynamically).
+
+Note: The helper also exposes a sorted list ensuring deterministic diffs.
+
+### Enhanced Library Module (Frontend Prototype)
+The basic library catalog page has been replaced with an advanced in‑memory prototype (`apps/web/src/pages/library/Library.jsx`) featuring:
+* Catalog grid/list with multi‑facet filters (category, format, language) & search (title/author/ISBN)
+* Drawer detail view (activity, stock, tags) and inline edit flow
+* Issue modal with member selection & due date; tracks active loans (client-side)
+* Basic loan listing & overdue highlighting (foundation for circulation tab expansion)
+* Add/Edit book form with category/format/language & tag parsing
+* RBAC enforcement: `library.view` (page access) / `library.manage` (issue, add/edit, stock mutation)
+
+Future backend alignment: replace local arrays with REST fetch; persist loans, reservations, vendors, and subscription data; move constants to shared domain types; surface real overdue calculations and fines.
 3. Ensure Postgres user has rights to create tables.
 4. If DSN changed from async pattern, Alembic still uses sync `postgresql://` DSN (ok). Make sure it's reachable.
 5. Inspect migration status: `alembic history --verbose`.
