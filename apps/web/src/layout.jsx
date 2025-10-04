@@ -19,10 +19,23 @@ const navSections = [
   { to: '/core/staff', label: 'Staff Mgmt', icon: UsersIcon },
   { to: '/core/staff/directory', label: 'Staff Directory', icon: UsersIcon },
   { to: '/core/transport', label: 'Transport', icon: TruckIcon },
-  { to: '/core/transport/management', label: 'Transport Mgmt', icon: TruckIcon },
   { to: '/attendance', label: 'Attendance', icon: ClipboardDocumentCheckIcon },
   { to: '/timetable', label: 'Timetable', icon: ClockIcon },
   { to: '/library', label: 'Library', icon: BookOpenIcon },
+  { to: '/inventory', label: 'Inventory', icon: WrenchScrewdriverIcon },
+    ],
+  },
+  {
+    label: 'User Pages',
+    items: [
+      { to: '/student/dashboard-preview', label: 'Student Portal', icon: UserCircleIcon },
+      { to: '/teacher', label: 'Teachers Portal', icon: AcademicCapIcon },
+      { to: '/teacher/planner', label: 'Teacher Planner', icon: AcademicCapIcon },
+  { to: '/core/transport/management', label: 'Transport Portal', icon: TruckIcon },
+  { to: '/marketing/portal', label: 'Marketing Portal', icon: SparklesIcon },
+      { to: '/headmistress/portal', label: 'Headmistress Portal', icon: ShieldCheckIcon },
+      { to: '/principal/desk', label: 'Principal Desk', icon: ShieldCheckIcon },
+      { to: '/parent/invoices/preview', label: 'Parents Portal', icon: DocumentTextIcon },
     ],
   },
   {
@@ -32,6 +45,11 @@ const navSections = [
   { to: '/exams', label: 'Exams', icon: ClipboardDocumentListIcon },
   { to: '/homework', label: 'Homework', icon: DocumentTextIcon },
   { to: '/academics/lesson-plans', label: 'Lesson Plans', icon: PaintBrushIcon },
+  { to: '/planner', label: 'Planner', icon: PaintBrushIcon },
+  { to: '/lesson-planner', label: 'Lesson Planner', icon: PaintBrushIcon },
+  { to: '/curriculum-planner', label: 'Curriculum Planner', icon: PaintBrushIcon },
+  { to: '/lesson-curriculum-advanced', label: 'Lesson+Curriculum (Prev)', icon: PaintBrushIcon },
+  { to: '/library/management-advanced', label: 'Library Advanced', icon: BookOpenIcon },
   { to: '/analytics/attendance', label: 'Analytics', icon: ChartBarSquareIcon },
     ],
   },
@@ -43,6 +61,23 @@ const navSections = [
   { to: '/labs', label: 'Labs', icon: BeakerIcon },
   { to: '/events/engagement', label: 'Events Engagement', icon: PresentationChartBarIcon },
   { to: '/events/external', label: 'External Events', icon: TrophyIcon },
+  { to: '/enrichment/career-counselling', label: 'Career Counselling', icon: AcademicCapIcon },
+  { to: '/enrichment/labs/management', label: 'Lab Management', icon: BeakerIcon },
+  { to: '/enrichment/workshops/management', label: 'Workshop Mgmt', icon: SparklesIcon },
+  { to: '/enrichment/sports-division', label: 'Sports Division', icon: TrophyIcon },
+  { to: '/enrichment/clubs-activities', label: 'Clubs & Activities', icon: TrophyIcon },
+  { to: '/discipline', label: 'Discipline', icon: ShieldCheckIcon },
+  { to: '/health/infirmary', label: 'Infirmary', icon: ShieldCheckIcon },
+  { to: '/houses/management', label: 'House Mgmt', icon: TrophyIcon },
+  { to: '/admissions/management', label: 'Admissions', icon: ClipboardDocumentListIcon },
+    ],
+  },
+  {
+    label: 'Operations',
+    items: [
+      { to: '/operations/capacity', label: 'Capacity Utilization', icon: ChartBarSquareIcon },
+      { to: '/operations/vendors', label: 'Vendors', icon: WrenchScrewdriverIcon },
+      { to: '/operations/security-support', label: 'Security & Support', icon: ShieldCheckIcon },
     ],
   },
   {
@@ -52,14 +87,16 @@ const navSections = [
   { to: '/parent/feedback', label: 'Feedback', icon: ChatBubbleBottomCenterTextIcon },
   { to: '/parent/connect', label: 'Connect', icon: BoltIcon },
   { to: '/parent/groups', label: 'Groups', icon: UsersIcon },
+  { to: '/parent/invoices', label: 'Invoices', icon: DocumentTextIcon },
     ],
   },
   {
     label: 'Finance & HR',
     items: [
   { to: '/fees', label: 'Fees', icon: CurrencyRupeeIcon },
-  { to: '/invoices', label: 'Invoices', icon: DocumentTextIcon },
   { to: '/payroll/components', label: 'Payroll', icon: BanknotesIcon },
+  { to: '/finance', label: 'Finance & Accounts', icon: BanknotesIcon },
+  { to: '/hr/desk', label: 'HR Desk', icon: UsersIcon },
     ],
   },
   {
@@ -71,6 +108,11 @@ const navSections = [
     { to: '/settings', label: 'Settings', icon: Cog6ToothIcon },
     { to: '/features', label: 'Features', icon: SparklesIcon },
     { to: '/engagement', label: 'Engagement', icon: BoltIcon },
+    { to: '/compliance', label: 'Compliance', icon: ShieldCheckIcon },
+    { to: '/system/rbac', label: 'RBAC', icon: ShieldCheckIcon },
+    { to: '/system/templates', label: 'Templates', icon: DocumentTextIcon },
+    { to: '/system/import-center', label: 'Import Center', icon: DocumentTextIcon },
+    { to: '/comms/hub', label: 'Comms Hub', icon: ChatBubbleBottomCenterTextIcon },
     ],
   },
 ];
@@ -261,22 +303,27 @@ export function Layout(){
         </main>
         {/* Mobile bottom nav */}
   <nav className="lg:hidden fixed bottom-0 inset-x-0 h-14 bg-slate-900/95 dark:bg-slate-950/95 backdrop-blur border-t border-slate-800 flex items-center justify-around z-40 mobile-bottom-nav-enter">
-          {[
-            navSections[0].items[0], // dashboard
-            navSections[0].items[1], // students
-            navSections[1].items[4], // analytics
-            navSections[4].items[0], // fees
-            navSections[5].items[3], // settings
-          ].map(item => {
-            const active = location.pathname === item.to || (!item.end && location.pathname.startsWith(item.to));
-            const Icon = item.icon;
-            return (
-              <NavLink key={item.to} to={item.to} end={item.end} className={classNames('flex flex-col items-center justify-center gap-1 w-full h-full text-[11px] font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900', active ? 'text-primary' : 'text-slate-400 hover:text-slate-100')}> 
-                {Icon && <Icon className={classNames('h-5 w-5', active ? 'text-primary' : '')} />}
-                <span>{item.label.split(' ')[0]}</span>
-              </NavLink>
-            );
-          })}
+          {(() => {
+            // Adjusted indices after inserting 'User Pages' section.
+            // Sections order: 0 Core, 1 User Pages, 2 Academics, 3 Enrichment, 4 Parent, 5 Finance & HR, 6 System
+            const items = [
+              navSections[0]?.items?.[0], // Dashboard
+              navSections[0]?.items?.[1], // Students
+              navSections[2]?.items?.[8], // Analytics (index shifted after removing Wing Console)
+              navSections[5]?.items?.[0], // Fees (Finance & HR)
+              navSections[6]?.items?.[3], // Settings (System)
+            ].filter(Boolean); // remove any undefined safely
+            return items.map(item => {
+              const active = location.pathname === item.to || (!item.end && location.pathname.startsWith(item.to));
+              const Icon = item.icon;
+              return (
+                <NavLink key={item.to} to={item.to} end={item.end} className={classNames('flex flex-col items-center justify-center gap-1 w-full h-full text-[11px] font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900', active ? 'text-primary' : 'text-slate-400 hover:text-slate-100')}> 
+                  {Icon && <Icon className={classNames('h-5 w-5', active ? 'text-primary' : '')} />}
+                  <span>{item.label.split(' ')[0]}</span>
+                </NavLink>
+              );
+            });
+          })()}
         </nav>
       </div>
     </div>

@@ -1,5 +1,6 @@
 // New Students Page (shadcn-like scaffold integration)
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import { exportRowsAsCSV } from '../utils/csv';
 import { api } from '../api';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -21,6 +22,15 @@ import {
   MessageSquareText,
   FileDown
 } from 'lucide-react';
+
+// Dummy fallback student dataset (used if API returns empty or fails)
+const DUMMY_STUDENTS = [
+  { id:'ST1001', first_name:'Aarav', last_name:'Sharma', admission_no:'A001', klass:5, section:'A', roll_no:12, guardian_name:'Rohan Sharma', guardian_phone:'+91-9876543201', fee_due_amount:0, attendancePct:94, transport:{route:'R1', stop:'Central'}, tags:['IEP'], status:'Active', absent_today:false, updated_at:new Date().toISOString(), blood_group:'B+', address:'12 Green Park, Delhi' },
+  { id:'ST1002', first_name:'Ananya', last_name:'Verma', admission_no:'A002', klass:8, section:'B', roll_no:5, guardian_name:'Meera Verma', guardian_phone:'+91-9876543202', fee_due_amount:1200, attendancePct:88, transport:null, tags:['ALLERGY'], status:'Active', absent_today:false, updated_at:new Date().toISOString(), blood_group:'O+', address:'44 Lake Road, Bangalore' },
+  { id:'ST1003', first_name:'Vihaan', last_name:'Patel', admission_no:'A003', klass:10, section:'C', roll_no:18, guardian_name:'Suresh Patel', guardian_phone:'+91-9876543203', fee_due_amount:0, attendancePct:97, transport:{route:'R2', stop:'Mall'}, tags:[], status:'Active', absent_today:true, updated_at:new Date().toISOString(), blood_group:'A+', address:'221B Baker Street (demo)' },
+  { id:'ST1004', first_name:'Sara', last_name:'Khan', admission_no:'A004', klass:2, section:'A', roll_no:3, guardian_name:'Imran Khan', guardian_phone:'+91-9876543204', fee_due_amount:5000, attendancePct:76, transport:{route:'R3', stop:'North Gate'}, tags:['ALLERGY','IEP'], status:'Active', absent_today:false, updated_at:new Date().toISOString(), blood_group:'AB+', address:'Palm Meadows, Hyderabad' },
+  { id:'ST1005', first_name:'Kabir', last_name:'Singh', admission_no:'A005', klass:12, section:'D', roll_no:27, guardian_name:'Amit Singh', guardian_phone:'+91-9876543205', fee_due_amount:0, attendancePct:91, transport:null, tags:[], status:'Active', absent_today:false, updated_at:new Date().toISOString(), blood_group:'O-', address:'Indiranagar, Bangalore' }
+];
 
 // Local types approximation (align with backend when available)
 // Using the richer scaffold fields; backend currently returns simpler student objects.
@@ -71,15 +81,16 @@ export default function Students(){
     api.listStudents()
       .then(list=>{
         if(cancelled) return;
-        const mapped = list.map(s => ({
+        const raw = (Array.isArray(list) && list.length>0) ? list : DUMMY_STUDENTS;
+        const mapped = raw.map(s => ({
           id: s.id || s.uuid || String(s.admission_no || s.admissionNo || s.id || Math.random()),
           name: [s.first_name, s.last_name].filter(Boolean).join(' ') || s.name || 'Unnamed',
           admissionNo: s.admission_no || s.admissionNo || s.id || '-',
-          grade: parseInt(s.klass || s.grade || 0) || 0,
+            grade: parseInt(s.klass || s.grade || 0) || 0,
           section: s.section || s.section_name || '-',
           rollNo: s.roll_no || s.rollNo || null,
-            guardianName: s.guardian_name || s.guardianName || '-',
-            guardianPhone: s.guardian_phone || s.guardianPhone || '-',
+          guardianName: s.guardian_name || s.guardianName || '-',
+          guardianPhone: s.guardian_phone || s.guardianPhone || '-',
           attendancePct: s.attendancePct || 0,
           feeDueAmount: s.fee_due_amount || s.feeDueAmount || 0,
           transport: s.transport || null,
@@ -91,9 +102,34 @@ export default function Students(){
           address: s.address || null
         }));
         setServerStudents(mapped);
+        setError(null);
         setLoading(false);
       })
-      .catch(e=>{ if(!cancelled){ setError(e.message); setLoading(false);} });
+      .catch(e=>{ if(!cancelled){
+        // API failed, use dummy dataset
+        const mapped = DUMMY_STUDENTS.map(s => ({
+          id: s.id,
+          name: [s.first_name, s.last_name].filter(Boolean).join(' '),
+          admissionNo: s.admission_no,
+          grade: s.klass,
+          section: s.section,
+          rollNo: s.roll_no,
+          guardianName: s.guardian_name,
+          guardianPhone: s.guardian_phone,
+          attendancePct: s.attendancePct,
+          feeDueAmount: s.fee_due_amount,
+          transport: s.transport,
+          tags: s.tags,
+          status: s.status,
+          absentToday: s.absent_today,
+          updatedAt: s.updated_at,
+          bloodGroup: s.blood_group,
+          address: s.address
+        }));
+        setServerStudents(mapped);
+        setError(e.message);
+        setLoading(false);
+      }});
     return ()=>{ cancelled=true; };
   },[]);
 
@@ -123,31 +159,32 @@ export default function Students(){
   // CSV export
   const exportCSV = () => {
     const fields = [
-      { label: 'ID', get: s=>s.id },
-      { label: 'Name', get: s=>s.name },
-      { label: 'AdmissionNo', get: s=>s.admissionNo },
-      { label: 'Grade', get: s=>s.grade },
-      { label: 'Section', get: s=>s.section },
-      { label: 'GuardianName', get: s=>s.guardianName },
-      { label: 'GuardianPhone', get: s=>s.guardianPhone },
-      ...(showOps ? [
-        { label: 'AttendancePct', get: s=>s.attendancePct },
-        { label: 'FeeDueAmount', get: s=>s.feeDueAmount }
-      ]:[]),
-      { label: 'TransportRoute', get: s=>s.transport?.route || '' },
-      { label: 'TransportStop', get: s=>s.transport?.stop || '' },
-      { label: 'Tags', get: s=>s.tags.join(';') },
-      { label: 'Status', get: s=>s.status },
-      { label: 'AbsentToday', get: s=> s.absentToday ? 'Yes':'No' },
-      { label: 'UpdatedAt', get: s=>s.updatedAt }
+      'ID','Name','AdmissionNo','Grade','Section','GuardianName','GuardianPhone',
+      ...(showOps ? ['AttendancePct','FeeDueAmount'] : []),
+      'TransportRoute','TransportStop','Tags','Status','AbsentToday','UpdatedAt'
     ];
-    const escape = v => { if(v==null) return ''; const s=String(v).replace(/"/g,'""'); return /[",\n]/.test(s)?`"${s}"`:s; };
-    const header = fields.map(f=>f.label).join(',');
-    const rows = filtered.map(s=> fields.map(f=>escape(f.get(s))).join(','));
-    const csv=[header,...rows].join('\n');
-    const blob=new Blob([csv],{type:'text/csv;charset=utf-8;'});
-    const url=URL.createObjectURL(blob); const a=document.createElement('a');
-    a.href=url; a.download=`students_${year}_${grade}_${section}.csv`; a.click(); URL.revokeObjectURL(url);
+    const rows = filtered.map(s => {
+      const base = [
+        s.id,
+        s.name,
+        s.admissionNo,
+        s.grade,
+        s.section,
+        s.guardianName,
+        s.guardianPhone
+      ];
+      if(showOps){ base.push(s.attendancePct, s.feeDueAmount); }
+      base.push(
+        s.transport?.route || '',
+        s.transport?.stop || '',
+        s.tags.join(';'),
+        s.status,
+        s.absentToday ? 'Yes':'No',
+        s.updatedAt
+      );
+      return base;
+    });
+    exportRowsAsCSV(fields, rows, { filename:`students_${year}_${grade}_${section}.csv`, bom:true });
   };
 
   const toggleAll = (checked) => {

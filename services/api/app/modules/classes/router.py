@@ -7,7 +7,9 @@ from sqlalchemy import select, func, literal, case
 import sqlalchemy as sa
 from ..students.models import Student
 from ..students.models_extra import AttendanceEvent, FeeInvoice, StudentTag
-from .models import ClassStatus, ClassTeacher
+from .models import ClassStatus, ClassTeacher, HeadMistress
+from .models_tasks import ClassTask, ClassNote
+from sqlalchemy.exc import ProgrammingError
 from ...core.db import get_session
 from ...core.security import require
 from datetime import datetime
@@ -16,7 +18,7 @@ router = APIRouter(prefix="/classes", tags=["classes"])
 
 class ClassRow(BaseModel):
     id: str
-    grade: int
+    grade: str  # now text label
     section: str
     class_teacher: Optional[str] = None  # placeholder
     total: int
@@ -42,7 +44,7 @@ class RosterStudent(BaseModel):
 
 class ClassDetail(BaseModel):
     id: str
-    grade: int
+    grade: str
     section: str
     class_teacher: Optional[str]
     total: int
@@ -65,15 +67,151 @@ class BulkActionResponse(BaseModel):
     task_id: Optional[str]
     affected: int
 
-async def _class_status_map(session: AsyncSession) -> dict[tuple[int,str], str]:
+class TaskCreate(BaseModel):
+    grade: str
+    section: str
+    text: str
+    due: Optional[datetime] = None
+
+class TaskUpdate(BaseModel):
+    text: Optional[str] = None
+    due: Optional[datetime] = None
+    status: Optional[str] = None
+
+class NoteCreate(BaseModel):
+    grade: str
+    section: str
+    text: str
+
+class NoteUpdate(BaseModel):
+    text: str
+
+async def _ensure_task_tables(session: AsyncSession):
+    try:
+        await session.execute(sa.text("SELECT 1 FROM class_tasks LIMIT 1"))
+        await session.execute(sa.text("SELECT 1 FROM class_notes LIMIT 1"))
+    except ProgrammingError:
+        await session.rollback()
+        await session.execute(sa.text("""
+        CREATE TABLE IF NOT EXISTS class_tasks (
+            id SERIAL PRIMARY KEY,
+            grade TEXT NOT NULL,
+            section VARCHAR(5) NOT NULL,
+            text VARCHAR(300) NOT NULL,
+            due DATE NULL,
+            status VARCHAR(12) NOT NULL DEFAULT 'Open'
+        );
+        CREATE INDEX IF NOT EXISTS idx_class_tasks_grade_section ON class_tasks(grade, section);
+        CREATE TABLE IF NOT EXISTS class_notes (
+            id SERIAL PRIMARY KEY,
+            grade TEXT NOT NULL,
+            section VARCHAR(5) NOT NULL,
+            text VARCHAR(500) NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_class_notes_grade_section ON class_notes(grade, section);
+        """))
+        await session.commit()
+
+# ---------------- Tasks & Notes CRUD ----------------
+class TaskOut(BaseModel):
+    id: int
+    grade: str
+    section: str
+    text: str
+    due: Optional[str] = None
+    status: str
+
+class NoteOut(BaseModel):
+    id: int
+    grade: str
+    section: str
+    text: str
+
+@router.get('/tasks', response_model=List[TaskOut])
+async def list_tasks(grade: str, section: str, session: AsyncSession = Depends(get_session), user=Depends(require('classes:list'))):
+    await _ensure_task_tables(session)
+    rows = (await session.execute(sa.text("select id, grade, section, text, due, status from class_tasks where grade=:g and section=:s order by id desc"), {"g": grade, "s": section})).all()
+    out = []
+    for rid, g, sec, text_val, due, status in rows:
+        out.append(TaskOut(id=rid, grade=str(g), section=sec, text=text_val, due=due.isoformat() if due else None, status=status))
+    return out
+
+@router.post('/tasks', response_model=TaskOut)
+async def create_task(body: TaskCreate, session: AsyncSession = Depends(get_session), user=Depends(require('classes:bulk'))):
+    await _ensure_task_tables(session)
+    res = await session.execute(sa.text("insert into class_tasks (grade, section, text, due) values (:g,:s,:t,:d) returning id, grade, section, text, due, status"), {"g": body.grade, "s": body.section, "t": body.text, "d": body.due.date() if body.due else None})
+    row = res.first()
+    await session.commit()
+    rid, g, sec, text_val, due, status = row
+    return TaskOut(id=rid, grade=str(g), section=sec, text=text_val, due=due.isoformat() if due else None, status=status)
+
+@router.patch('/tasks/{task_id}', response_model=TaskOut)
+async def update_task(task_id: int, body: TaskUpdate, session: AsyncSession = Depends(get_session), user=Depends(require('classes:bulk'))):
+    await _ensure_task_tables(session)
+    cur = (await session.execute(sa.text("select id, grade, section, text, due, status from class_tasks where id=:id"), {"id": task_id})).first()
+    if not cur:
+        raise HTTPException(404, 'Task not found')
+    update_sets = []
+    params = {"id": task_id}
+    if body.text is not None:
+        update_sets.append("text=:text"); params['text'] = body.text
+    if body.due is not None:
+        update_sets.append("due=:due"); params['due'] = body.due.date()
+    if body.status is not None:
+        update_sets.append("status=:status"); params['status'] = body.status
+    if update_sets:
+        await session.execute(sa.text(f"update class_tasks set {', '.join(update_sets)} where id=:id"), params)
+    row = (await session.execute(sa.text("select id, grade, section, text, due, status from class_tasks where id=:id"), {"id": task_id})).first()
+    await session.commit()
+    rid, g, sec, text_val, due, status = row
+    return TaskOut(id=rid, grade=str(g), section=sec, text=text_val, due=due.isoformat() if due else None, status=status)
+
+@router.delete('/tasks/{task_id}')
+async def delete_task(task_id: int, session: AsyncSession = Depends(get_session), user=Depends(require('classes:bulk'))):
+    await _ensure_task_tables(session)
+    await session.execute(sa.text("delete from class_tasks where id=:id"), {"id": task_id})
+    await session.commit()
+    return {"status":"deleted"}
+
+@router.get('/notes', response_model=List[NoteOut])
+async def list_notes(grade: str, section: str, session: AsyncSession = Depends(get_session), user=Depends(require('classes:list'))):
+    await _ensure_task_tables(session)
+    rows = (await session.execute(sa.text("select id, grade, section, text from class_notes where grade=:g and section=:s order by id desc"), {"g": grade, "s": section})).all()
+    return [NoteOut(id=r[0], grade=str(r[1]), section=r[2], text=r[3]) for r in rows]
+
+@router.post('/notes', response_model=NoteOut)
+async def create_note(body: NoteCreate, session: AsyncSession = Depends(get_session), user=Depends(require('classes:bulk'))):
+    await _ensure_task_tables(session)
+    res = await session.execute(sa.text("insert into class_notes (grade, section, text) values (:g,:s,:t) returning id, grade, section, text"), {"g": body.grade, "s": body.section, "t": body.text})
+    row = res.first(); await session.commit()
+    return NoteOut(id=row[0], grade=str(row[1]), section=row[2], text=row[3])
+
+@router.patch('/notes/{note_id}', response_model=NoteOut)
+async def update_note(note_id: int, body: NoteUpdate, session: AsyncSession = Depends(get_session), user=Depends(require('classes:bulk'))):
+    await _ensure_task_tables(session)
+    await session.execute(sa.text("update class_notes set text=:t where id=:id"), {"t": body.text, "id": note_id})
+    row = (await session.execute(sa.text("select id, grade, section, text from class_notes where id=:id"), {"id": note_id})).first()
+    if not row:
+        raise HTTPException(404, 'Note not found')
+    await session.commit()
+    return NoteOut(id=row[0], grade=str(row[1]), section=row[2], text=row[3])
+
+@router.delete('/notes/{note_id}')
+async def delete_note(note_id: int, session: AsyncSession = Depends(get_session), user=Depends(require('classes:bulk'))):
+    await _ensure_task_tables(session)
+    await session.execute(sa.text("delete from class_notes where id=:id"), {"id": note_id})
+    await session.commit()
+    return {"status":"deleted"}
+
+async def _class_status_map(session: AsyncSession) -> dict[tuple[str,str], str]:
     rows = (await session.execute(select(ClassStatus))).scalars().all()
-    return {(r.grade, r.section): r.result_status for r in rows}
+    return {(str(r.grade), r.section): r.result_status for r in rows}
 
 @router.get("", response_model=List[ClassListResponse])
 async def list_classes(
     session: AsyncSession = Depends(get_session),
     user=Depends(require('classes:list')),
-    grade: Optional[int] = Query(None, ge=1, le=12),
+    grade: Optional[str] = Query(None, min_length=1),
     section: Optional[str] = Query(None, min_length=1, max_length=2),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0)
@@ -82,7 +220,7 @@ async def list_classes(
     # Base filtered students
     conditions = [stu.class_.isnot(None), stu.section.isnot(None)]
     if grade is not None:
-        conditions.append(stu.class_ == str(grade))
+        conditions.append(stu.class_ == grade)
     if section is not None:
         conditions.append(stu.section == section)
 
@@ -150,10 +288,10 @@ async def list_classes(
     status_map = await _class_status_map(session)
     out: List[ClassListResponse] = []
     for grade_val, section_val, total, male, female, att_pct, fee_due_count, fee_due_amt, teacher_name in rows:
-        grade_int = int(grade_val) if str(grade_val).isdigit() else 0
+        label = str(grade_val)
         out.append(ClassListResponse(
-            id=f"{grade_val}{section_val}",
-            grade=grade_int,
+            id=f"{label}{section_val}",
+            grade=label,
             section=section_val,
             class_teacher=teacher_name,
             total=total,
@@ -162,7 +300,7 @@ async def list_classes(
             attendance_pct=int(att_pct or 0),
             fee_due_count=int(fee_due_count or 0),
             fee_due_amount=int(fee_due_amt or 0),
-            result_status=status_map.get((grade_int, section_val), 'Pending')
+            result_status=status_map.get((label if label.isdigit() else label, section_val), 'Pending')
         ))
     return out
 

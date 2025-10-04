@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { API_BASE } from '../api';
 
 const GlobalSettingsContext = createContext({ brand: null, refreshBrand: () => {}, updating:false, updateBrand: async () => {} });
 
@@ -8,7 +9,7 @@ export function GlobalSettingsProvider({ children }) {
 
   const fetchBrand = useCallback(async () => {
     try {
-      const res = await fetch('/api/settings/brand');
+      const res = await fetch(`${API_BASE}/settings/brand`);
       if(!res.ok) throw new Error('Failed to load brand settings');
       const data = await res.json();
       setBrand(data);
@@ -25,7 +26,7 @@ export function GlobalSettingsProvider({ children }) {
     // optimistic merge
     setBrand(prev => ({ ...prev, ...patch }));
     try {
-      const res = await fetch('/api/settings/brand', {
+      const res = await fetch(`${API_BASE}/settings/brand`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(patch)

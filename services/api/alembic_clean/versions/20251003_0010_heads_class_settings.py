@@ -17,47 +17,72 @@ depends_on = None
 
 
 def upgrade():
-    # head_mistress table
-    op.create_table(
-        "head_mistress",
-        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
-        sa.Column("name", sa.Text(), nullable=False),
-        sa.Column("active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()")),
-    )
-
-    # wing head_id (nullable) + index/FK
-    op.add_column("wings", sa.Column("head_id", sa.Integer(), nullable=True))
-    op.create_foreign_key(
-        "fk_wings_head_id", "wings", "head_mistress", ["head_id"], ["id"], ondelete="SET NULL"
-    )
-    op.create_index("ix_wings_head_id", "wings", ["head_id"])
-
-    # school_classes storage_path / meet_link columns
-    op.add_column("school_classes", sa.Column("storage_path", sa.Text(), nullable=True))
-    op.add_column("school_classes", sa.Column("meet_link", sa.Text(), nullable=True))
-
-    # Backfill existing storage/meet basic defaults (best-effort)
     conn = op.get_bind()
+    # If everything already exists, behave as no-op (align with parallel 0010 variant)
+    pre = conn.execute(sa.text(
+        """
+        SELECT
+          (SELECT COUNT(*)>0 FROM information_schema.tables WHERE table_name='head_mistress') AS has_hm,
+          (SELECT COUNT(*)>0 FROM information_schema.columns WHERE table_name='wings' AND column_name='head_id') AS has_head_id,
+          (SELECT COUNT(*)>0 FROM information_schema.columns WHERE table_name='school_classes' AND column_name='storage_path') AS has_storage,
+          (SELECT COUNT(*)>0 FROM information_schema.columns WHERE table_name='school_classes' AND column_name='meet_link') AS has_meet
+        """
+    )).fetchone()
+    if pre and all(pre):
+        return
+
+    # Create head_mistress safely
     try:
-        conn.execute(
-            sa.text(
-                """
-                UPDATE school_classes SET storage_path = CONCAT('/classes/', grade, '-', section)
-                WHERE storage_path IS NULL;
-                """
+        conn.execute(sa.text(
+            """CREATE TABLE IF NOT EXISTS head_mistress (
+                id SERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                active BOOLEAN NOT NULL DEFAULT true,
+                created_at timestamptz DEFAULT now()
+            )"""
+        ))
+    except Exception:
+        pass
+
+    # Add head_id column if missing
+    try:
+        conn.execute(sa.text("ALTER TABLE wings ADD COLUMN IF NOT EXISTS head_id INT"))
+    except Exception:
+        pass
+    # Foreign key (skip if exists)
+    fk_exists = conn.execute(sa.text(
+        """SELECT 1 FROM information_schema.table_constraints
+             WHERE table_name='wings' AND constraint_name='fk_wings_head_id'"""
+    )).fetchone()
+    if not fk_exists:
+        try:
+            op.create_foreign_key(
+                "fk_wings_head_id", "wings", "head_mistress", ["head_id"], ["id"], ondelete="SET NULL"
             )
-        )
-        conn.execute(
-            sa.text(
-                """
-                UPDATE school_classes SET meet_link = CONCAT('https://meet.google.com/lookup/', grade, section, id::text)
-                WHERE meet_link IS NULL;
-                """
-            )
-        )
-    except Exception as e:  # pragma: no cover
-        print("[warn] backfill storage/meet failed", e)
+        except Exception:
+            pass
+    # Index
+    try:
+        op.create_index("ix_wings_head_id", "wings", ["head_id"])
+    except Exception:
+        pass
+
+    # school_classes columns
+    for col in ("storage_path", "meet_link"):
+        try:
+            conn.execute(sa.text(f"ALTER TABLE school_classes ADD COLUMN IF NOT EXISTS {col} TEXT"))
+        except Exception:
+            pass
+
+    # Backfill
+    try:
+        conn.execute(sa.text("UPDATE school_classes SET storage_path = CONCAT('/classes/', grade, '-', section) WHERE storage_path IS NULL;"))
+    except Exception:
+        pass
+    try:
+        conn.execute(sa.text("UPDATE school_classes SET meet_link = CONCAT('https://meet.google.com/lookup/', grade, section, id::text) WHERE meet_link IS NULL;"))
+    except Exception:
+        pass
 
 
 def downgrade():

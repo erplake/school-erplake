@@ -33,7 +33,7 @@ alembic upgrade head          # apply latest migrations
 alembic revision -m "change"  # create new migration (edit, then upgrade)
 ```
 
-`alembic.ini` now points to the cleaned migration lineage in `alembic_clean/` (the legacy `alembic_legacy_20251003/` directory was archived on 2025-10-03). Ensure `DATABASE_URL` is set or Postgres env vars are present. See `services/api/MIGRATION_RESET.md` for details.
+`alembic.ini` + `alembic/` contain the migration environment. Ensure `DATABASE_URL` is set or Postgres env vars are present.
 
 > NOTE: This is a scaffold. Implement real persistence, RBAC, and validations per your needs.
 
@@ -385,123 +385,6 @@ psql $env:DATABASE_URL -c "\dt"  # list tables
 psql $env:DATABASE_URL -c "select * from students;"
 ```
 
-### New: Classroom / Classes Analytics Seeding
-
-An extended seed for the classroom domain (wings, school classes, student ↔ class mapping, attendance window history, fees, exam scores) now lives at:
-
-`python -m app.modules.classes.seed_classes`
-
-It is idempotent and will:
-* Insert synthetic students across grades 5–10 (sections A/B) if missing
-* Generate 5 days of historical attendance (random presence)
-* Create fee invoices (open, partial, settled) per student
-* Assign random tags & teacher names
-* Create a wing + `school_classes` rows for a derived academic year (e.g. 2025-26)
-* Map students into `class_students`
-* Insert two exam scores per student (older lower score, newer higher score) for results averaging
-
-Run (from `services/api` or repo root):
-```
-python -m app.modules.classes.seed_classes
-```
-
-## Classroom Management / Classes Admin API
-
-Endpoint: `GET /classes-admin`
-
-Returns enriched per‑class aggregates consumed by the advanced classroom dashboard.
-
-Response fields (per class):
-```
-id, academic_year, wing_id, grade, section, teacher_name, target_ratio,
-total_students, male, female,
-attendance_pct,          # 0-100 rolling window attendance %
-fee_due_pct,             # % of students with at least one outstanding (unsettled) fee invoice
-results_avg              # Average of each student's latest exam percentage within window
-```
-
-### Query Parameters
-* `academic_year` (optional): filter classes by academic year. If omitted returns all.
-* `attendance_days` (default 1): Rolling day window for attendance percentage. Capped 1–120.
-	* Attendance % = (Sum of present events in window) / (attendance_days * total_students) * 100.
-* `exam_window_days` (default 90): Look‑back window for selecting each student's latest exam score. Capped 1–365.
-
-### Exam Scores Source
-Schema created via native SQL: `infra/sql/exam_scores.sql`
-```
-exam_scores(id, student_id, exam_date, exam_type, total_marks, obtained_marks, created_at)
-```
-Latest exam per student within the `exam_window_days` window is used; class `results_avg` is the mean of (obtained/total * 100) across those students that have an exam.
-
-### Attendance Calculation Details
-Multiple events for a student per day are summed; typical usage is one row per day per student (present=1 / absent=0). If you later store multiple session records, consider replacing the raw sum with a DISTINCT ON (student_id, date) subquery.
-
-### Fee Due Percentage
-Counts students with any invoice where `settled_at IS NULL` and `amount - paid_amount > 0`.
-
-### Caching
-In‑process TTL cache (30s) keyed by `(academic_year, attendance_days, exam_window_days)`.
-Response includes header:
-```
-X-Cache: HIT | MISS
-```
-Invalidated on:
-* Class create / update
-* Student assignment to class
-* CSV import of classes
-
-Planned optional enhancement: Redis‑backed cache implementing same key semantics for multi‑process deployments.
-
-### CSV Import / Export
-Import endpoint: `POST /classes-admin/import` with file field `file`.
-Expected header:
-```
-academic_year,wing,grade,section,teacher_name,target_ratio
-```
-Export endpoint: `GET /classes-admin/export?academic_year=YYYY-YY` returns `{ csv: "..." }`.
-
-### Example Fetch
-```
-GET /classes-admin?academic_year=2025-26&attendance_days=7&exam_window_days=60
-```
-Sample (trimmed) JSON:
-```json
-[
-	{
-		"id": 12,
-		"academic_year": "2025-26",
-		"grade": 5,
-		"section": "A",
-		"total_students": 12,
-		"male": 6,
-		"female": 6,
-		"attendance_pct": 82,
-		"fee_due_pct": 58,
-		"results_avg": 67
-	}
-]
-```
-
-### Testing Coverage
-Added tests:
-* Attendance window variation (`attendance_days=1` vs `7`)
-* Exam results averaging (latest exam selection)
-* Cache HIT/MISS header behavior & invalidation
-* Full seed integration producing valid aggregate ranges
-
-Run the suite:
-```
-pytest -q -k classes_admin
-```
-
-### Extending
-Potential next steps:
-* Subject-level exam score breakdown (introduce `exam_subject_scores`)
-* Redis cache backend (feature flag `CLASSES_CACHE_BACKEND=redis`)
-* Materialized view or periodic job for heavy aggregates if usage grows
-* Attendance normalization to one record per day per student (session collapse)
-
-
 
 ## Roadmap (next)
 
@@ -515,6 +398,102 @@ Potential next steps:
 
 If you don't see tables in your database:
 1. Confirm you are looking at the correct database: `echo $env:DATABASE_URL` (PowerShell).
+ 
+### Schema Drift Detection (New Utility)
+
+Schema drift can occur when raw SQL changes or hot fixes bypass Alembic migrations. A lightweight comparison script now exists at `services/api/scripts/schema_diff.py` to help detect divergence early in CI/local.
+
+Usage examples:
+```
+cd services/api
+python -m scripts.schema_diff --dsn postgresql://user:pass@localhost:5432/school
+# or rely on env vars (PGUSER, PGPASSWORD, PGHOST, PGPORT, PGDATABASE)
+python -m scripts.schema_diff
+```
+Exit codes:
+ - 0: No differences
+ - 1: Drift detected (missing/extra tables, column mismatches)
+ - 2: Execution/import error
+
+Currently compared: tables, column names, type (string form), nullability, simple default literal/function text.
+
+Enhanced (recent): primary keys, unique constraints, foreign keys (table/columns), and indexes (name, columns, uniqueness) are now also diffed. Any drift in these structural elements will trigger a non‑zero exit for CI visibility.
+Extend by adding index & FK inspections inside the script if needed.
+
+Suggested CI gate (GitHub Actions step):
+```
+python -m scripts.schema_diff || (echo "Schema drift detected" && exit 1)
+```
+
+### Reusable CSV Utility
+
+Frontend CSV exports are consolidating on a shared helper: `apps/web/src/utils/csv.js` with functions:
+ - `generateCSV({ headers, rows, bom })`
+ - `exportRowsAsCSV(headers, rows, { filename, bom })`
+ - `exportObjectsAsCSV(objs, { headerOrder, filename, bom })`
+
+Pages already migrated: Staff Management, Students, Transport Management. Remaining enrichment / planner pages can be refactored incrementally to eliminate bespoke escaping logic.
+2. Ensure Alembic migrations have been applied: `alembic upgrade head`.
+
+---
+
+### 2025-10-04: Staff Resignations & Announcements
+
+Enhancements landed to persist staff resignation metadata and broadcast announcements.
+
+Schema:
+* `staff` table gains nullable columns: `resignation_date DATE`, `resignation_reason VARCHAR(255)`.
+* New table: `staff_announcements (id SERIAL PRIMARY KEY, message VARCHAR(500) NOT NULL, created_at TIMESTAMPTZ DEFAULT NOW())`.
+
+Apply migration:
+* Run SQL file: `infra/sql/20251004_resignation_and_announcements.sql` (or create an Alembic revision wrapping its contents if you have standardized migrations).
+
+API:
+* `PATCH /staff/id/{id}` accepts & returns `resignation_date`, `resignation_reason`.
+* `POST /staff/announcements` (perm: `staff:announce`) creates an announcement.
+* `GET /staff/announcements` lists newest first.
+
+Frontend (`StaffManagement.jsx`):
+* Announcement modal now persists via new endpoints; history loads on first page fetch.
+* Resignation modal sends date/reason; CSV export includes them.
+* New toast system (`ToastProvider.jsx`) replaces blocking alerts.
+
+Integration steps:
+1. Apply migration before restarting API.
+2. Grant `staff:announce` permission to appropriate role(s).
+3. Wrap app root with `<ToastProvider>` to enable notifications.
+
+Planned follow-ups:
+* Pagination & filtering for announcements.
+* Audit events for resignation actions.
+* Role-based scoping (e.g., allow teachers to see but not create announcements).
+
+### 2025-10-04: Staff Duties & Substitutions
+
+Added persistence for assigning ad-hoc staff duties and planning teacher substitutions.
+
+Schema additions (migration `infra/sql/20251004_duties_substitutions.sql`):
+* `staff_duties(id, staff_id FK staff, title, duty_date, notes, created_at)`
+* `staff_substitutions(id, date, absent_staff_id FK staff, substitute_staff_id FK staff, periods, notes, created_at)`
+
+API endpoints (permission scopes suggested – ensure they are granted or temporarily bypass RBAC):
+* `POST /staff/duties` (scope: `staff:duty`)
+* `GET  /staff/duties?from_date&to_date&limit=`
+* `POST /staff/substitutions` (scope: `staff:substitute`)
+* `GET  /staff/substitutions?date_from&date_to&limit=`
+
+Frontend (`StaffManagement.jsx`):
+* Assign Duty modal persists via `createStaffDuty`.
+* Plan Substitution modal persists via `createStaffSubstitution`.
+* Panels: Recent Duties & Recent Substitutions display latest 10 items.
+
+Future Enhancements:
+* Conflict detection (period clashes / double booking substitute).
+* Rich period model referencing timetable periods table instead of comma string.
+* Filtering & pagination UI for historical lookup.
+* Integration with notifications to auto-inform substitute teacher.
+
+---
 2. Run migrations manually:
 	```
 	cd services/api

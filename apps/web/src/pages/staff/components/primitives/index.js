@@ -1,0 +1,9 @@
+// Export primitives for staff module
+export { KPI } from './kpi';
+export { Card } from './card';
+export { QA } from './qa';
+export { Modal } from './modal';
+export { Select } from './select';
+export { Field } from './field';
+export { Info } from './info';
+export { AttendanceBar } from './attendanceBar';

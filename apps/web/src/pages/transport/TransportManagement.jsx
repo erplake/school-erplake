@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { exportRowsAsCSV } from '../../utils/csv';
 
 // Transport Management Page (Standalone Client-Side Demo)
 // Converted from provided single-file component description.
@@ -155,18 +156,13 @@ export default function TransportManagement() {
   });
 
   const exportCSV = () => {
-    const cols = ['Bus Code','Model','Capacity','Status','Route','Driver','Driver Phone','Last Service','Next Service','Odometer Km','Insurance Exp','Permit Exp','Fitness Exp','PUC Exp','GPS Last Ping'];
+    const headers = ['Bus Code','Model','Capacity','Status','Route','Driver','Driver Phone','Last Service','Next Service','Odometer Km','Insurance Exp','Permit Exp','Fitness Exp','PUC Exp','GPS Last Ping'];
     const rows = filtered.map(b => {
       const driver = driversById[b.driverId];
       const route = routesById[b.routeId];
       return [b.code,b.model,b.capacity,b.status,route?.name||'',driver?.name||'',driver?.phone||'',fmt(b.lastServiceDate),fmt(computeNextService(b)),b.odometerKm,b.insuranceExpiry,b.permitExpiry,b.fitnessExpiry,b.pucExpiry,fmt(b.gpsLastPing)];
     });
-    const csv = [cols.join(','), ...rows.map(r => r.map(v => `"${String(v).replaceAll('"','""')}"`).join(','))].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `transport-fleet-${new Date().toISOString().slice(0,10)}.csv`;
-    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    exportRowsAsCSV(headers, rows, { filename:`transport-fleet-${new Date().toISOString().slice(0,10)}.csv`, bom:true });
   };
 
   // Alerts
@@ -332,7 +328,7 @@ export default function TransportManagement() {
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white dark:from-slate-950 dark:to-slate-950 text-slate-900 dark:text-slate-100 p-6">
       <div className="max-w-7xl mx-auto">
         <div className="flex items-center justify-between gap-3 mb-6">
-          <div className="flex items-center gap-3"><Icon name="bus" className="w-7 h-7 text-indigo-600"/><div><h1 className="text-xl sm:text-2xl font-bold tracking-tight">Transport Management</h1><p className="text-sm text-slate-500">Fleet, drivers, maintenance, and compliance at a glance.</p></div></div>
+          <div className="flex items-center gap-3"><Icon name="bus" className="w-7 h-7 text-indigo-600"/><div><h1 className="text-xl sm:text-2xl font-bold tracking-tight">Transport Portal</h1><p className="text-sm text-slate-500">Unified fleet, drivers, maintenance & compliance overview.</p></div></div>
           <div className="flex items-center gap-2">
             <button onClick={()=>setModal({ type: 'bus-edit' })} className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700"><Icon name="plus"/>Add Bus</button>
             <button onClick={exportCSV} className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border"><Icon name="download"/>Export</button>

@@ -3,17 +3,52 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.dependencies import get_db, get_current_user
 from . import models, schemas, integration_models, config_models
+from sqlalchemy import text as _text
 from app.core.tenant import get_tenant_context, TenantContext
 from app.core.security import require
 from sqlalchemy import select, update
+from app.core.db import engine
+import uuid
 
 router = APIRouter(prefix='/settings', tags=['settings'])
 
 @router.get('/brand', response_model=schemas.BrandSettingsOut)
 async def get_brand(db: AsyncSession = Depends(get_db)):
-    rec = (await db.execute(select(models.BrandSettings))).scalars().first()
+    try:
+        rec = (await db.execute(select(models.BrandSettings))).scalars().first()
+    except Exception:
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        async with engine.begin() as conn:
+            await conn.execute(_text("""
+            CREATE TABLE IF NOT EXISTS brand_settings (
+                id uuid PRIMARY KEY,
+                school_name varchar NOT NULL DEFAULT 'My School',
+                principal_name varchar NULL,
+                phone_primary varchar NULL,
+                phone_transport varchar NULL,
+                email_contact varchar NULL,
+                location_address varchar NULL,
+                address_line1 varchar NULL,
+                address_line2 varchar NULL,
+                city varchar NULL,
+                state varchar NULL,
+                country varchar NULL,
+                postal_code varchar NULL,
+                logo_url varchar NULL,
+                website_url varchar NULL,
+                tagline varchar NULL,
+                social_links jsonb NULL,
+                updated_by varchar NULL,
+                updated_at timestamptz DEFAULT now()
+            )"""))
+        rec = (await db.execute(select(models.BrandSettings))).scalars().first()
     if not rec:
         rec = models.BrandSettings()
+        if not getattr(rec, 'id', None):
+            rec.id = uuid.uuid4()
         db.add(rec)
         await db.flush()
         await db.refresh(rec)
@@ -23,9 +58,41 @@ async def get_brand(db: AsyncSession = Depends(get_db)):
 async def update_brand(payload: schemas.BrandSettingsUpdate, db: AsyncSession = Depends(get_db), user=Depends(get_current_user)):
     if user.role not in ('admin','staff','moderator'):
         raise HTTPException(status_code=403, detail='Not allowed')
-    rec = (await db.execute(select(models.BrandSettings))).scalars().first()
+    try:
+        rec = (await db.execute(select(models.BrandSettings))).scalars().first()
+    except Exception:
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+        async with engine.begin() as conn:
+            await conn.execute(_text("""
+            CREATE TABLE IF NOT EXISTS brand_settings (
+                id uuid PRIMARY KEY,
+                school_name varchar NOT NULL DEFAULT 'My School',
+                principal_name varchar NULL,
+                phone_primary varchar NULL,
+                phone_transport varchar NULL,
+                email_contact varchar NULL,
+                location_address varchar NULL,
+                address_line1 varchar NULL,
+                address_line2 varchar NULL,
+                city varchar NULL,
+                state varchar NULL,
+                country varchar NULL,
+                postal_code varchar NULL,
+                logo_url varchar NULL,
+                website_url varchar NULL,
+                tagline varchar NULL,
+                social_links jsonb NULL,
+                updated_by varchar NULL,
+                updated_at timestamptz DEFAULT now()
+            )"""))
+        rec = (await db.execute(select(models.BrandSettings))).scalars().first()
     if not rec:
         rec = models.BrandSettings()
+        if not getattr(rec, 'id', None):
+            rec.id = uuid.uuid4()
         db.add(rec)
         await db.flush()
         await db.refresh(rec)

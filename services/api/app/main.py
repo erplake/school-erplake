@@ -1,10 +1,11 @@
-from fastapi import FastAPI, Request, Response, Depends, HTTPException
+from fastapi import FastAPI, Request, Response, Depends, HTTPException, APIRouter
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional
 import time
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 from .core.logging import request_logging_middleware
+import logging, traceback, os
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.db import get_session
@@ -23,12 +24,16 @@ from .modules.settings.router import router as settings_router
 from .modules.admissions.router import router as admissions_router
 from .modules.leaves.router import router as leaves_router
 from .modules.classes.router import router as classes_router
+from .modules.classes.router_headmistress import router as head_mistress_router
+from .modules.classes.router_wings import router_wings, router_classes_admin
 from .modules.staff.router import router as staff_router
 from .modules.transport.router import router as transport_router
 from .modules.ops.router import router as ops_router
 from .modules.files.router import router as files_router
 from .modules.comms.router import router as comms_router
 from .modules.payments.router import router as payments_router
+from .modules.gallery.router import router as gallery_router
+from .modules.teacher.router import router as teacher_router
 from sqlalchemy import text
 from .core.db import engine
 
@@ -54,7 +59,25 @@ async def lifespan(app: FastAPI):
     # (Optional future shutdown cleanup)
 
 app = FastAPI(title="School ERPLake API", lifespan=lifespan)
+logger = logging.getLogger("erplake.api")
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+API_DEBUG = os.getenv('API_DEBUG', '').lower() in ('1','true','yes','on')
+logger.setLevel(logging.DEBUG if API_DEBUG else logging.INFO)
 app.middleware('http')(request_logging_middleware)
+
+if API_DEBUG:
+    @app.middleware('http')
+    async def exception_debug_middleware(request: Request, call_next):
+        try:
+            return await call_next(request)
+        except Exception as e:
+            tb = ''.join(traceback.format_exception(type(e), e, e.__traceback__))
+            logger.error("Unhandled exception path=%s method=%s %s", request.url.path, request.method, tb)
+            raise
 
 # CORS configuration to allow frontend dev server
 origins = [
@@ -103,7 +126,18 @@ async def healthz():
 
 from typing import Optional
 
-@app.get('/ops/audit', dependencies=[Depends(require('ops:audit_read'))])
+api_router = APIRouter(prefix="/api")
+
+@api_router.get('/healthz')
+async def api_health_alias():
+    return {'ok': True}
+
+if API_DEBUG:
+    @api_router.get('/debug/fail')
+    async def debug_fail():
+        raise RuntimeError("Intentional debug failure for logging verification")
+
+@api_router.get('/ops/audit', dependencies=[Depends(require('ops:audit_read'))])
 async def list_audit(action: Optional[str] = None, object_type: Optional[str] = None, limit: int = 50, session: AsyncSession = Depends(get_session)):
     q = select(AuditLog).order_by(AuditLog.id.desc()).limit(min(limit, 200))
     if action:
@@ -125,24 +159,31 @@ async def list_audit(action: Optional[str] = None, object_type: Optional[str] = 
         } for r in rows
     ]
 
-# Mount new modular routers
-app.include_router(auth_router)
-app.include_router(students_router)
-app.include_router(attendance_router)
-app.include_router(attendance_bulk_router)
-app.include_router(fees_router)
-app.include_router(chat_router)
-app.include_router(events_router)
-app.include_router(social_router)
-app.include_router(settings_router)
-app.include_router(admissions_router)
-app.include_router(leaves_router)
-app.include_router(classes_router)
-app.include_router(staff_router)
-app.include_router(transport_router)
-app.include_router(ops_router)
-app.include_router(files_router)
-app.include_router(comms_router)
-app.include_router(payments_router)
+"""Mount all routers under /api prefix for consistent frontend proxying."""
+api_router.include_router(auth_router)
+api_router.include_router(students_router)
+api_router.include_router(attendance_router)
+api_router.include_router(attendance_bulk_router)
+api_router.include_router(fees_router)
+api_router.include_router(chat_router)
+api_router.include_router(events_router)
+api_router.include_router(social_router)
+api_router.include_router(settings_router)
+api_router.include_router(admissions_router)
+api_router.include_router(leaves_router)
+api_router.include_router(classes_router)
+api_router.include_router(router_wings)
+api_router.include_router(router_classes_admin)
+api_router.include_router(head_mistress_router)
+api_router.include_router(staff_router)
+api_router.include_router(transport_router)
+api_router.include_router(ops_router)
+api_router.include_router(files_router)
+api_router.include_router(comms_router)
+api_router.include_router(payments_router)
+api_router.include_router(gallery_router)
+api_router.include_router(teacher_router)
+
+app.include_router(api_router)
 
 ## Startup event replaced by lifespan context above.

@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 try:
     from dotenv import load_dotenv  # type: ignore
@@ -17,6 +18,14 @@ from alembic import context
 
 # Interpret the config file for Python logging.
 config = context.config
+
+# --- Ensure 'app' package is importable (add services/api root to sys.path) ---
+try:
+    api_root = Path(__file__).resolve().parents[1]  # .../services/api
+    if str(api_root) not in sys.path:
+        sys.path.insert(0, str(api_root))
+except Exception as _e:  # non-fatal
+    print(f"[alembic env] path injection warning: {_e}")
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 

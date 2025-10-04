@@ -19,6 +19,9 @@ class Staff(Base):
     birthday: Mapped[Optional[date]] = mapped_column(Date())
     reports_to: Mapped[Optional[str]] = mapped_column(String(120))
     status: Mapped[str] = mapped_column(String(20), default='Active')
+    # Resignation tracking (nullable so existing rows remain valid until updated)
+    resignation_date: Mapped[Optional[date]] = mapped_column(Date())
+    resignation_reason: Mapped[Optional[str]] = mapped_column(String(255))
     attendance_30: Mapped[Optional[int]] = mapped_column(Integer, default=0)
     leaves_taken_ytd: Mapped[Optional[int]] = mapped_column(Integer, default=0)
     leave_balance: Mapped[Optional[int]] = mapped_column(Integer, default=0)
@@ -41,3 +44,28 @@ class StaffLeaveRequest(Base):
     created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
     staff: Mapped['Staff'] = relationship('Staff', back_populates='leave_requests')
+
+class StaffAnnouncement(Base):
+    __tablename__ = 'staff_announcements'
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    message: Mapped[str] = mapped_column(String(500), nullable=False)
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+class StaffDuty(Base):
+    __tablename__ = 'staff_duties'
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    staff_id: Mapped[int] = mapped_column(ForeignKey('staff.id', ondelete='CASCADE'))
+    title: Mapped[str] = mapped_column(String(160), nullable=False)
+    duty_date: Mapped[date] = mapped_column(Date())
+    notes: Mapped[Optional[str]] = mapped_column(String(500))
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+class StaffSubstitution(Base):
+    __tablename__ = 'staff_substitutions'
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    date: Mapped[date] = mapped_column(Date())
+    absent_staff_id: Mapped[int] = mapped_column(ForeignKey('staff.id', ondelete='CASCADE'))
+    substitute_staff_id: Mapped[int] = mapped_column(ForeignKey('staff.id', ondelete='CASCADE'))
+    periods: Mapped[str] = mapped_column(String(60))  # comma-separated list of periods e.g. "2,3,5"
+    notes: Mapped[Optional[str]] = mapped_column(String(500))
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)

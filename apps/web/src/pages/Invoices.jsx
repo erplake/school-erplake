@@ -1,4 +1,5 @@
 import React from 'react';
+import { useRBAC } from '../context/RBACContext';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
@@ -16,11 +17,20 @@ const statusVariant = (s) => ({
 }[s] || 'default');
 
 export function Invoices(){
+  const { hasCapability } = useRBAC();
+  const canView = hasCapability('finance.invoices.view');
+  const canManage = hasCapability('finance.invoices.manage');
+  if(!canView){
+    return <div className="space-y-4">
+      <h2 className="text-lg font-semibold">Invoices</h2>
+      <div className="text-sm bg-white border rounded-md p-6 text-slate-600">You do not have permission to view invoices.</div>
+    </div>;
+  }
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Invoices</h2>
-        <Button size="sm">New Invoice</Button>
+        <h2 className="text-lg font-semibold flex items-center gap-2">Invoices {canManage && <span className="text-xs rounded bg-emerald-50 text-emerald-700 px-2 py-0.5 border border-emerald-200">manage</span>}</h2>
+        {canManage && <Button size="sm">New Invoice</Button>}
       </div>
       <Card>
         <CardHeader>
@@ -35,6 +45,7 @@ export function Invoices(){
                   <th className="text-left font-medium px-3 py-2">Student</th>
                   <th className="text-left font-medium px-3 py-2">Amount</th>
                   <th className="text-left font-medium px-3 py-2">Status</th>
+                  {canManage && <th className="text-left font-medium px-3 py-2">Actions</th>}
                 </tr>
               </thead>
               <tbody>
@@ -44,6 +55,10 @@ export function Invoices(){
                     <td className="px-3 py-2 text-muted-foreground">{inv.student}</td>
                     <td className="px-3 py-2 text-muted-foreground">₹ {inv.amount.toLocaleString()}</td>
                     <td className="px-3 py-2"><Badge variant={statusVariant(inv.status)}>{inv.status}</Badge></td>
+                    {canManage && <td className="px-3 py-2 space-x-2">
+                      <Button size="xs" variant="outline">Mark Paid</Button>
+                      <Button size="xs" variant="outline">Cancel</Button>
+                    </td>}
                   </tr>
                 ))}
               </tbody>

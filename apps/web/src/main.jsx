@@ -38,6 +38,7 @@ import Announcements from './pages/comms/Announcements';
 import DigitalDiary from './pages/comms/DigitalDiary';
 import LeaveRequests from './pages/comms/LeaveRequests';
 import LeaveApprovals from './pages/comms/LeaveApprovals';
+import CommsHub from './pages/comms/CommsHub';
 // Payroll
 import SalaryComponents from './pages/payroll/SalaryComponents';
 import Payslips from './pages/payroll/Payslips';
@@ -82,15 +83,66 @@ import ClassroomManagement from './pages/core/Classroom';
 import EventsEngagement from './pages/events/EventsEngagement';
 import ExternalEvents from './pages/events/ExternalEvents';
 import Engagement from './pages/engagement/Engagement';
+// New enrichment modules
+import CareerCounsellingPage from './pages/enrichment/CareerCounselling.jsx';
+import LabManagement from './pages/enrichment/LabManagement.jsx';
+import WorkshopManagement from './pages/enrichment/WorkshopManagement.jsx';
+import SportsDivision from './pages/enrichment/SportsDivision.jsx';
+import ClubsActivitiesManager from './pages/enrichment/ClubsActivitiesManager.jsx';
+// Health & Houses
+import Infirmary from './pages/health/Infirmary.jsx';
+import HouseManagement from './pages/houses/HouseManagement.jsx';
+// Teacher
+import TeacherDashboard from './pages/teacher/TeacherDashboard';
+import TeacherClass from './pages/teacher/TeacherClass';
+import ClassTeacherTools from './pages/teacher/ClassTeacherTools';
+import TeacherPlannerPage from './pages/teacher/TeacherPlannerPage.jsx';
+// New standalone modules
+import InventoryPage from './pages/inventory/Inventory.jsx';
+import CompliancePage from './pages/compliance/Compliance.jsx';
+import LessonPlanner from './pages/planner/LessonPlanner.jsx';
+import Planner from './pages/planner/Planner.jsx';
+import FinanceAccounting from './pages/finance/FinanceAccounting.jsx';
+import CurriculumPlanner from './pages/academics/CurriculumPlanner.jsx';
+import AdvancedInvoices from './pages/finance/AdvancedInvoices.jsx';
+import AdvancedLessonCurriculum from './pages/planner/AdvancedLessonCurriculum.jsx';
+// Headmistress portal (new consolidated)
+import HeadmistressPortal from './pages/headmistress/HeadmistressPortal.jsx';
+import StudentDashboardPreview from './pages/student/StudentDashboardPreview.jsx';
+import MarketingPortal from './pages/marketing/MarketingPortal.jsx';
+// Admissions & Operations
+import AdmissionsManagement from './pages/admissions/AdmissionsManagement.jsx';
+import CapacityUtilizationManager from './pages/operations/CapacityUtilizationManager.jsx';
+import VendorManagementPage from './pages/operations/VendorManagementPage.jsx';
+import SecuritySupportStaffPage from './pages/operations/SecuritySupportStaffPage.jsx';
+// HR / Principal / Advanced Library
+import HRDeskPage from './pages/hr/HRDeskPage.jsx';
+import PrincipalDesk from './pages/principal/PrincipalDesk.jsx';
+import LibraryManagementAdvanced from './pages/library/LibraryManagementAdvanced.jsx';
 
 import './styles.css';
 import { GlobalSettingsProvider } from './context/GlobalSettingsContext';
+import { RBACProvider } from './context/RBACContext.jsx';
+import { TemplateProvider } from './context/TemplateContext.jsx';
+import { ToastProvider } from './components/ToastProvider.jsx';
+// System new pages
+import RBACManagement from './pages/system/RBACManagement.jsx';
+import TemplateManager from './pages/system/TemplateManager.jsx';
+import ImportCenter from './pages/system/ImportCenter.jsx';
+import DisciplineCenter from './pages/discipline/DisciplineCenter.jsx';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 
 const root = createRoot(document.getElementById('root'));
+const queryClient = new QueryClient();
 root.render(
-        <BrowserRouter>
-            <GlobalSettingsProvider>
-                <Routes>
+                <BrowserRouter>
+                        <GlobalSettingsProvider>
+                        <RBACProvider>
+                        <TemplateProvider>
+                        <ToastProvider>
+                            <QueryClientProvider client={queryClient}>
+                                <Routes>
             <Route path="/auth/login" element={<Login />} />
             <Route path="/auth/verify" element={<OtpVerify />} />
             <Route path="/parent/homework" element={<ParentHomeworkView />} />
@@ -102,13 +154,17 @@ root.render(
                 <Route index element={<Dashboard />} />
                 <Route path="students" element={<Students />} />
                 <Route path="fees" element={<Fees />} />
-                <Route path="attendance" element={<Attendance />} />
+            <Route path="/parent/homework" element={<ParentHomeworkView />} />
+            {/* Parent Invoices (relocated) */}
+            <Route path="/parent/invoices" element={<Invoices />} />
+            <Route path="/parent/invoices/preview" element={<AdvancedInvoices />} />
                 <Route path="invoices" element={<Invoices />} />
                 <Route path="settings">
                     <Route index element={<Settings />} />
                     <Route path="brand" element={<BrandSettings />} />
                 </Route>
-
+                {/* Moved invoices under parent namespace; keep legacy path commented for reference */}
+                {/* <Route path="invoices" element={<Invoices />} /> */}
                 <Route path="exams">
                     <Route index element={<ExamsOverview />} />
                     <Route path="setup" element={<ExamSetup />} />
@@ -138,6 +194,7 @@ root.render(
                     <Route path="diary" element={<DigitalDiary />} />
                     <Route path="leave-requests" element={<LeaveRequests />} />
                     <Route path="leave-approvals" element={<LeaveApprovals />} />
+                    <Route path="hub" element={<CommsHub />} />
                 </Route>
                 <Route path="payroll">
                     <Route path="components" element={<SalaryComponents />} />
@@ -174,11 +231,35 @@ root.render(
                     <Route path="moderation" element={<ChatModeration />} />
                 </Route>
                 <Route path="features" element={<Features />} />
+                <Route path="discipline" element={<DisciplineCenter />} />
+                {/* System Foundations */}
+                <Route path="system/rbac" element={<RBACManagement />} />
+                <Route path="system/templates" element={<TemplateManager />} />
+                <Route path="system/import-center" element={<ImportCenter />} />
+                <Route path="teacher">
+                    <Route index element={<TeacherDashboard />} />
+                    <Route path="class/:classId" element={<TeacherClass />} />
+                    <Route path="class/:classId/tools" element={<ClassTeacherTools />} />
+                    <Route path="planner" element={<TeacherPlannerPage />} />
+                </Route>
+                {/* New standalone pages */}
+                <Route path="inventory" element={<InventoryPage />} />
+                <Route path="compliance" element={<CompliancePage />} />
+                <Route path="lesson-planner" element={<LessonPlanner />} />
+                <Route path="planner" element={<Planner />} />
+                <Route path="curriculum-planner" element={<CurriculumPlanner />} />
+                <Route path="lesson-curriculum-advanced" element={<AdvancedLessonCurriculum />} />
+                <Route path="headmistress/portal" element={<HeadmistressPortal />} />
+                <Route path="student/dashboard-preview" element={<StudentDashboardPreview />} />
+                <Route path="marketing/portal" element={<MarketingPortal />} />
+                <Route path="finance" element={<FinanceAccounting />} />
+                <Route path="invoices/preview" element={<AdvancedInvoices />} />
                 <Route path="workshops" element={<Workshops />} />
                 <Route path="activities" element={<CoScholastic />} />
                 <Route path="labs" element={<SchoolLabs />} />
                 {/* Explicit alias to management plus directory sub-route */}
-                <Route path="staff/management" element={<StaffManagement />} />
+                {/* Legacy preview path relocated under parent */}
+                {/* <Route path="invoices/preview" element={<AdvancedInvoices />} /> */}
                 <Route path="staff/directory" element={<StaffDirectory />} />
                 {/* Core aliases for staff */}
                 <Route path="core/staff" element={<StaffManagement />} />
@@ -189,8 +270,31 @@ root.render(
                 <Route path="engagement" element={<Engagement />} />
                 <Route path="events/engagement" element={<EventsEngagement />} />
                 <Route path="events/external" element={<ExternalEvents />} />
+                {/* Enrichment extensions */}
+                <Route path="enrichment/career-counselling" element={<CareerCounsellingPage />} />
+                <Route path="enrichment/labs/management" element={<LabManagement />} />
+                <Route path="enrichment/workshops/management" element={<WorkshopManagement />} />
+                <Route path="enrichment/sports-division" element={<SportsDivision />} />
+                <Route path="enrichment/clubs-activities" element={<ClubsActivitiesManager />} />
+                {/* Health & Houses */}
+                <Route path="health/infirmary" element={<Infirmary />} />
+                <Route path="houses/management" element={<HouseManagement />} />
+                {/* Admissions & Operations */}
+                <Route path="admissions/management" element={<AdmissionsManagement />} />
+                <Route path="operations/capacity" element={<CapacityUtilizationManager />} />
+                <Route path="operations/vendors" element={<VendorManagementPage />} />
+                <Route path="operations/security-support" element={<SecuritySupportStaffPage />} />
+                {/* HR / Principal / Advanced Library */}
+                <Route path="hr/desk" element={<HRDeskPage />} />
+                <Route path="principal/desk" element={<PrincipalDesk />} />
+                <Route path="library/management-advanced" element={<LibraryManagementAdvanced />} />
             </Route>
-                </Routes>
-            </GlobalSettingsProvider>
+                                </Routes>
+                                <ReactQueryDevtools initialIsOpen={false} />
+                            </QueryClientProvider>
+                        </ToastProvider>
+                        </TemplateProvider>
+                        </RBACProvider>
+                        </GlobalSettingsProvider>
         </BrowserRouter>
 );

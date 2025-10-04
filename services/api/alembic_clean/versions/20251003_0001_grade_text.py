@@ -19,28 +19,56 @@ depends_on = None
 
 def upgrade():
     conn = op.get_bind()
-    # Wings grade_start / grade_end -> TEXT
+    # Helper to see if table / column exists & its current type
+    def col_type(table: str, column: str):  # returns sqlalchemy row or None
+        return conn.execute(
+            sa.text(
+                """
+                SELECT data_type
+                FROM information_schema.columns
+                WHERE table_name = :t AND column_name = :c
+                """
+            ),
+            {"t": table, "c": column},
+        ).fetchone()
+
+    # Wings grade_start / grade_end -> TEXT only if not already text
     for col in ("grade_start", "grade_end"):
         try:
-            op.alter_column("wings", col, type_=sa.Text(), postgresql_using=f"{col}::text")
+            ct = col_type("wings", col)
+            if ct and ct[0].lower() not in ("text", "character varying"):
+                op.alter_column("wings", col, type_=sa.Text(), postgresql_using=f"{col}::text")
         except Exception as e:  # pragma: no cover
             print(f"[warn] altering wings.{col} failed: {e}")
 
-    # School classes grade -> TEXT
+    # School classes grade -> TEXT (idempotent)
     try:
-        op.alter_column("school_classes", "grade", type_=sa.Text(), postgresql_using="grade::text")
+        ct = col_type("school_classes", "grade")
+        if ct and ct[0].lower() not in ("text", "character varying"):
+            op.alter_column("school_classes", "grade", type_=sa.Text(), postgresql_using="grade::text")
     except Exception as e:
         print(f"[warn] altering school_classes.grade failed: {e}")
 
-    # Optional tables if already created elsewhere
+    # Optional tables if already created elsewhere (avoid raising errors on absent tables)
+    existing = set(
+        r[0]
+        for r in conn.execute(
+            sa.text(
+                """
+                SELECT table_name FROM information_schema.tables
+                WHERE table_schema='public' AND table_name IN ('class_tasks','class_notes')
+                """
+            )
+        ).fetchall()
+    )
     for tbl in ("class_tasks", "class_notes"):
+        if tbl not in existing:
+            continue
         try:
-            conn.execute(sa.text(f"SELECT 1 FROM {tbl} LIMIT 1"))
-        except Exception:
-            continue  # table not present yet -> skip
-        try:
-            op.alter_column(tbl, "grade", type_=sa.Text(), postgresql_using="grade::text")
-        except Exception as e:
+            ct = col_type(tbl, "grade")
+            if ct and ct[0].lower() not in ("text", "character varying"):
+                op.alter_column(tbl, "grade", type_=sa.Text(), postgresql_using="grade::text")
+        except Exception as e:  # pragma: no cover
             print(f"[warn] altering {tbl}.grade failed: {e}")
 
 

@@ -37,17 +37,19 @@ ROLE_PATCH = {
 
 def upgrade():
     # Insert new permissions
+    bind = op.get_bind()
     for code, desc in NEW_PERMISSIONS:
-        op.execute(sa.text("INSERT INTO core.permission(code, description) VALUES (:c,:d) ON CONFLICT (code) DO NOTHING"), {'c': code, 'd': desc})
+        bind.execute(sa.text("INSERT INTO core.permission(code, description) VALUES (:c,:d) ON CONFLICT (code) DO NOTHING"), {'c': code, 'd': desc})
     # Map to roles
     for role, perms in ROLE_PATCH.items():
         for p in perms:
-            op.execute(sa.text("INSERT INTO core.role_permission(role, permission_code) VALUES (:r,:p) ON CONFLICT DO NOTHING"), {'r': role, 'p': p})
+            bind.execute(sa.text("INSERT INTO core.role_permission(role, permission_code) VALUES (:r,:p) ON CONFLICT DO NOTHING"), {'r': role, 'p': p})
 
 def downgrade():
     # Remove role mappings then permissions
+    bind = op.get_bind()
     for role, perms in ROLE_PATCH.items():
         for p in perms:
-            op.execute(sa.text("DELETE FROM core.role_permission WHERE role=:r AND permission_code=:p"), {'r': role, 'p': p})
+            bind.execute(sa.text("DELETE FROM core.role_permission WHERE role=:r AND permission_code=:p"), {'r': role, 'p': p})
     for code, _ in NEW_PERMISSIONS:
-        op.execute(sa.text("DELETE FROM core.permission WHERE code=:c"), {'c': code})
+        bind.execute(sa.text("DELETE FROM core.permission WHERE code=:c"), {'c': code})
